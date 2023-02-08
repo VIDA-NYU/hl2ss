@@ -15,7 +15,10 @@ stream_names = {
     hl2ss.StreamPort.RM_VLC_LEFTLEFT: 'gll', 
     hl2ss.StreamPort.RM_VLC_RIGHTFRONT: 'grf', 
     hl2ss.StreamPort.RM_VLC_RIGHTRIGHT: 'grr',
-    hl2ss.StreamPort.RM_DEPTH_LONGTHROW: 'depthlt'
+    hl2ss.StreamPort.RM_DEPTH_LONGTHROW: 'depthlt',
+    hl2ss.StreamPort.RM_IMU_ACCELEROMETER: 'imuaccel',
+    hl2ss.StreamPort.RM_IMU_GYROSCOPE: 'imugyro',
+    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag'
 }
 
 header_version = 2
@@ -26,5 +29,8 @@ port2SensorType = {
     hl2ss.StreamPort.RM_VLC_LEFTLEFT: holoframe.SensorType.GLL, 
     hl2ss.StreamPort.RM_VLC_RIGHTFRONT: holoframe.SensorType.GRF, 
     hl2ss.StreamPort.RM_VLC_RIGHTRIGHT: holoframe.SensorType.GRR,
-    hl2ss.StreamPort.RM_DEPTH_LONGTHROW: holoframe.SensorType.DepthLT
+    hl2ss.StreamPort.RM_DEPTH_LONGTHROW: holoframe.SensorType.DepthLT,
+    hl2ss.StreamPort.RM_IMU_ACCELEROMETER: holoframe.SensorType.Accel,
+    hl2ss.StreamPort.RM_IMU_GYROSCOPE: holoframe.SensorType.Gyro,
+    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag
 }
