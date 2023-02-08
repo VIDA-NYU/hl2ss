@@ -4,13 +4,15 @@ import ptgctl.util
 from ptgctl import holoframe
 import hl2ss
 import hl2ss_BBN
+import numpy as np
 
 # Settings --------------------------------------------------------------------
 url = hl2ss_BBN.url
 username = hl2ss_BBN.username
 password = hl2ss_BBN.password
 
-port = hl2ss.StreamPort.PERSONAL_VIDEO
+# Port
+port = hl2ss.StreamPort.RM_DEPTH_LONGTHROW
 stream_name = hl2ss_BBN.stream_names[port]
 #------------------------------------------------------------------------------
 
@@ -27,8 +29,9 @@ class exampleApp:
                 for sid, t, buffer in await ws_pull.recv_data():
                     d = holoframe.load(buffer)
                     print('timestamp: ', d['time'])
-                    print('pose matrix: ', d['cam2world'])
-                    cv2.imshow('image', d['image'])
+                    print('pose matrix: ', d['rig2world'])
+                    cv2.imshow('image', d['image'] / np.max(d['image']))
+                    cv2.imshow('ab', d['infrared'] / np.max(d['infrared']))
                     cv2.waitKey(1)
                     
         

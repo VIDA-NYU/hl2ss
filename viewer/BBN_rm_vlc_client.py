@@ -10,7 +10,13 @@ url = hl2ss_BBN.url
 username = hl2ss_BBN.username
 password = hl2ss_BBN.password
 
-port = hl2ss.StreamPort.PERSONAL_VIDEO
+# Port
+# Options:
+# hl2ss.StreamPort.RM_VLC_LEFTFRONT
+# hl2ss.StreamPort.RM_VLC_LEFTLEFT
+# hl2ss.StreamPort.RM_VLC_RIGHTFRONT
+# hl2ss.StreamPort.RM_VLC_RIGHTRIGHT
+port = hl2ss.StreamPort.RM_VLC_LEFTFRONT
 stream_name = hl2ss_BBN.stream_names[port]
 #------------------------------------------------------------------------------
 
@@ -27,7 +33,7 @@ class exampleApp:
                 for sid, t, buffer in await ws_pull.recv_data():
                     d = holoframe.load(buffer)
                     print('timestamp: ', d['time'])
-                    print('pose matrix: ', d['cam2world'])
+                    print('pose matrix: ', d['rig2world'])
                     cv2.imshow('image', d['image'])
                     cv2.waitKey(1)
                     

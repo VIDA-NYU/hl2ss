@@ -7,7 +7,6 @@ import struct
 import ptgctl
 import ptgctl.util
 import hl2ss_BBN
-import timeit
 
 # Settings --------------------------------------------------------------------
 
@@ -19,22 +18,10 @@ url = hl2ss_BBN.url
 username = hl2ss_BBN.username
 password = hl2ss_BBN.password
 
-# Camera parameters
-width     = 760
-height    = 428
-framerate = 15
-
-# Video encoding profile
-profile = hl2ss.VideoProfile.H265_MAIN
-
-# Encoded stream average bits per second
-# Must be > 0
-bitrate = 5*1024*1024
-
 # Port
-port = hl2ss.StreamPort.PERSONAL_VIDEO
+port = hl2ss.StreamPort.RM_DEPTH_LONGTHROW
 
-# PV Stream name
+# VLC Stream name
 stream_name = hl2ss_BBN.stream_names[port]
 
 # DON'T change these variables unless if necessary ----------------------------
@@ -42,8 +29,8 @@ stream_name = hl2ss_BBN.stream_names[port]
 # Operating mode
 mode = hl2ss.StreamMode.MODE_1
 
-# Decoded format
-decoded_format = 'bgr24'
+# PNG filter
+png_filter = hl2ss.PngFilterMode.Paeth
 
 #------------------------------------------------------------------------------
 
@@ -66,18 +53,17 @@ class exampleApp:
         listener = keyboard.Listener(on_press=on_press)
         listener.start()
         
-        client = hl2ss.rx_decoded_pv(host, port, hl2ss.ChunkSize.PERSONAL_VIDEO, mode, width, height, framerate, profile, bitrate, decoded_format)
+        client = hl2ss.rx_decoded_rm_depth_longthrow(host, port, hl2ss.ChunkSize.RM_DEPTH_LONGTHROW, mode, png_filter)
         client.open()
         async with self.api.data_push_connect([stream_name], batch=False) as ws_push:
             while self.enable:
                 data = client.get_next_packet()
                 
-
-                img_str = cv2.imencode('.jpg', data.payload, [int(cv2.IMWRITE_JPEG_QUALITY), 70])[1].tobytes()
-                print(len(img_str))
-                pose_info = data.pose.astype('f').tobytes() + data.focal_length.astype('f').tobytes() + data.principal_point.astype('f').tobytes()
-                nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType[port], data.timestamp, width, height, len(img_str), len(pose_info))
-                frame = nyu_header + img_str + pose_info
+                depth_img_str = data.payload.depth.tobytes()
+                ab_img_str = cv2.imencode('.jpg', data.payload.ab, [int(cv2.IMWRITE_JPEG_QUALITY), 70])[1].tobytes()
+                pose_info = data.pose.astype('f').tobytes()
+                nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType[port], data.timestamp, data.payload.depth.shape[1], data.payload.depth.shape[0], len(depth_img_str), len(pose_info)+len(ab_img_str))
+                frame = nyu_header + depth_img_str + pose_info + ab_img_str
                 
                 await ws_push.send_data([frame], [stream_name])
         
