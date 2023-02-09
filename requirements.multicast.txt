@@ -1,0 +1,7 @@
+fire
+websockets
+requests
+numpy
+opencv-python
+# pynput
+av

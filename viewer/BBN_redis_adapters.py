@@ -1,5 +1,6 @@
-from contextlib import asynccontextmanager
-from pynput import keyboard
+import os
+# from contextlib import asynccontextmanager
+# from pynput import keyboard
 
 import hl2ss
 import cv2
@@ -18,7 +19,7 @@ import BBN_redis_frame_load as holoframe
 hololens_host = "192.168.1.164"
 
 # Data server login
-url = 'localhost:8000'
+url = os.getenv('API_URL') or 'localhost:8000'
 wsurl = f'ws://{url}'
 
 
@@ -86,7 +87,8 @@ class StreamUpload:
             if self.research_mode:
                 hl2ss.start_subsystem_pv(self.host, self.port)
             self.client.open()
-            async with keyboard_listen(on_press), websockets.connect(f'{WSURL}/data/{self.stream_id}/push?header=0') as ws:
+            # keyboard_listen(on_press), 
+            async with websockets.connect(f'{WSURL}/data/{self.stream_id}/push?header=0') as ws:
                 while self.enable:
                     data = self.get_next_packet()
                     await ws.send(self.adapt_data(data))
@@ -158,8 +160,7 @@ class VLCFrameUpload(StreamUpload):
             self.host, self.port, 
             hl2ss.ChunkSize.RM_VLC, 
             hl2ss.StreamMode.MODE_1, 
-            width, height, framerate, 
-            self.profile, self.bitrate, 'bgr24')
+            self.profile, self.bitrate)
 
     def adapt_data(self, data) -> bytes:
         '''Pack image as JPEG with header.'''
@@ -232,16 +233,16 @@ class ImuMagUpload(ImuUpload):
 
 # ----------------------------------- Utils ---------------------------------- #
 
-def keyboard_listen(on_press):
-    @asynccontextmanager  # so it can be used with asyncwith
-    async def listen():
-        listener = keyboard.Listener(on_press=on_press)
-        try:
-            listener.start()
-            yield 
-        finally:
-            listener.join()
-    return listen()
+# def keyboard_listen(on_press):
+#     @asynccontextmanager  # so it can be used with asyncwith
+#     async def listen():
+#         listener = keyboard.Listener(on_press=on_press)
+#         try:
+#             listener.start()
+#             yield 
+#         finally:
+#             listener.join()
+#     return listen()
 
 
 

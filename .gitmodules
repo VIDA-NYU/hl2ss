@@ -1,0 +1,3 @@
+[submodule "redis-streamer"]
+	path = redis-streamer
+	url = https://github.com/VIDA-NYU/redis-streamer.git
