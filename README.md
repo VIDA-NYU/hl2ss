@@ -25,6 +25,7 @@ HoloLens 2 server application for streaming sensor data via TCP. Created to stre
 - Optional per-frame pose for the Front Camera and Research Mode sensors streams.
 - Client can configure the bitrate of the H264, HEVC, and AAC encoded streams.
 - For the Front Camera, the client can configure the resolution, framerate, focus, white balance, and exposure (see [etc/hl2_capture_formats.txt](https://github.com/jdibenes/hl2ss/blob/main/etc/hl2_capture_formats.txt) for a list of supported formats).
+- Access to Spatial Mapping data (Experimental).
 
 ## Preparation
 
@@ -66,6 +67,7 @@ The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/v
 - Microphone: [viewer/client_microphone.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_microphone.py)
 - Spatial Input: [viewer/client_si.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_si.py)
 - Remote Configuration: [viewer/client_rc.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rc.py)
+- Spatial Mapping: [viewer/client_sm.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_sm.py)
 
 Required packages:
 
@@ -162,7 +164,7 @@ This process is described later in this section.
 7. Navigate to Configuration Properties -> Linker -> Input -> Additional Dependencies and add hl2ss.lib.
 8. Open App.cpp and edit it as follows:
     1. `#include <hl2ss.h>` after the other includes.
-    2. At the end of the `App::SetWindow(CoreWindow^ window)` method, right before the closing `}`, add `InitializeStreams(HL2SS_ENABLE_RM | HL2SS_ENABLE_MC | HL2SS_ENABLE_PV | HL2SS_ENABLE_SI | HL2SS_ENABLE_RC);`.
+    2. At the end of the `App::SetWindow(CoreWindow^ window)` method, right before the closing `}`, add `InitializeStreams(HL2SS_ENABLE_RM | HL2SS_ENABLE_MC | HL2SS_ENABLE_PV | HL2SS_ENABLE_SI | HL2SS_ENABLE_RC | HL2SS_ENABLE_SM);`.
 9. Follow step 11 of the previous section.
 
 **Remote Unity Scene**
