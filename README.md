@@ -86,6 +86,16 @@ python viewer/BBN_redis_clients.py imu imugyro
 python viewer/BBN_redis_clients.py imu imumag
 ```
 
+If you want to change the hl2ss to redis adapters, you can do that in `viewer/BBN_redis_adapters.py`.
+
+For example clients, see `viewer/BBN_redis_clients.py`.
+
+To bring up more adapters that you add - just add them to `docker-compose.yaml`.
+
+This currently handles hololens -> redis -> client flow. If you want to enable flow backwards, the adapter-client flow can be flipped (e.g. put the client code into an adapter container).
+
+This code handles decoded image frames for simplicity.
+
 ## Python client
 
 The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/viewer) directory demonstrate how to connect to the server, receive the data, unpack it, and decode it in real time. Run the server application on your HoloLens and set the host variable of the Python scripts to your HoloLens IP address.
