@@ -56,6 +56,36 @@ The first time the server runs it will ask for the necessary permissions to acce
 - Microphone (Settings -> Privacy -> Microphone).
 - User movements (Settings -> Privacy -> User movements).
 
+## Multicast
+The multicasting setup is defined in `docker-compose.yaml`.
+
+Before running - make sure you:
+ - have docker installed
+ - have docker-compose installed (e.g. you can do `pip install docker-compose`)
+ - You cloned this repo including submodules (if not, run: `git submodule update --recursive --remote --init`)
+
+Then all you need to do is (at the root of the repository):
+```bash
+docker-compose up -d --build
+```
+
+Then to view the streams, you can run any of these:
+```bash
+# main camera
+python viewer/BBN_redis_clients.py image main
+# side greyscale cameras
+python viewer/BBN_redis_clients.py image gll
+python viewer/BBN_redis_clients.py image glf
+python viewer/BBN_redis_clients.py image grf
+python viewer/BBN_redis_clients.py image grr
+# depth long throw
+python viewer/BBN_redis_clients.py image depthlt --norm
+# imu
+python viewer/BBN_redis_clients.py imu imuaccel
+python viewer/BBN_redis_clients.py imu imugyro
+python viewer/BBN_redis_clients.py imu imumag
+```
+
 ## Python client
 
 The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/viewer) directory demonstrate how to connect to the server, receive the data, unpack it, and decode it in real time. Run the server application on your HoloLens and set the host variable of the Python scripts to your HoloLens IP address.

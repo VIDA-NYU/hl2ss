@@ -2,12 +2,12 @@ import hl2ss
 from ptgctl import holoframe
 
 # HoloLens address
-host = "192.168.1.164"
+host = "10.18.172.12"
 
 # Data server login
-url = 'your_server_url'
+url = 'https://api.ptg.poly.edu'
 username = 'your_username'
-password = 'your_password'
+password = 'your_username'
 
 stream_names = {
     hl2ss.StreamPort.PERSONAL_VIDEO: 'main',

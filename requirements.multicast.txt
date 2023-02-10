@@ -3,5 +3,6 @@ websockets
 requests
 numpy
 opencv-python
+Pillow
 # pynput
 av

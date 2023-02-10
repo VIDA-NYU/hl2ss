@@ -1,10 +1,7 @@
 import os
-# from contextlib import asynccontextmanager
-# from pynput import keyboard
-
 import hl2ss
 import cv2
-
+import time
 import asyncio
 import struct
 import websockets
@@ -16,11 +13,11 @@ import BBN_redis_frame_load as holoframe
 # Settings --------------------------------------------------------------------
 
 # HoloLens address
-hololens_host = "192.168.1.164"
+HL_HOST = os.getenv("HOLOLENS_URL") or "192.168.1.164"
 
 # Data server login
-url = os.getenv('API_URL') or 'localhost:8000'
-wsurl = f'ws://{url}'
+API_HOST = os.getenv('API_URL') or 'localhost:8000'
+WSURL = f'ws://{API_HOST}'
 
 
 # stream name and type ID mappers
@@ -52,15 +49,16 @@ port2sensor_type = {
 # ----------------------------- Streaming Basics ----------------------------- #
 
 class StreamUpload:
-    client: hl2ss._client
+    client=None
     research_mode = False
     # NYU Header Version
     header_version = 2
 
     port: int
 
-    def __init__(self, host):
+    def __init__(self, host=HL_HOST, api_url=WSURL):
         self.host = host
+        self.api_url = api_url
         self.sensor_type = port2sensor_type[self.port]
         self.stream_id = port2stream_id[self.port]
 
@@ -74,26 +72,29 @@ class StreamUpload:
         return data
 
     def __call__(self):
-        return asyncio.run(self.forward_async())
+        while True:
+            asyncio.run(self.forward_async())
+            time.sleep(3)
 
     async def forward_async(self):
         self.enable = True
         self.create_client()
-        
-        def on_press(key):
-            self.enable = key != keyboard.Key.esc
-            return self.enable
+
+        if self.research_mode:
+            hl2ss.start_subsystem_pv(self.host, self.port)
         try:
-            if self.research_mode:
-                hl2ss.start_subsystem_pv(self.host, self.port)
             self.client.open()
-            # keyboard_listen(on_press), 
-            async with websockets.connect(f'{WSURL}/data/{self.stream_id}/push?header=0') as ws:
-                while self.enable:
-                    data = self.get_next_packet()
-                    await ws.send(self.adapt_data(data))
+            try:
+                async with websockets.connect(f'{self.api_url}/data/{self.stream_id}/push?header=0', close_timeout=10) as ws:
+                    while self.enable:
+                        data = self.get_next_packet()
+                        await ws.send(self.adapt_data(data))
+                        await asyncio.sleep(1e-5)
+            finally:
+                self.client.close()
+        except Exception as e:
+            print(e)
         finally:
-            self.client.close()
             if self.research_mode:
                 hl2ss.stop_subsystem_pv(self.host, self.port)
 
@@ -107,13 +108,19 @@ class PVFrameUpload(StreamUpload):
     bitrate = 5*1024*1024
     profile = hl2ss.VideoProfile.H265_MAIN
 
-    def __init__(self, host, width=760, height=460, fps=15):
+    def __init__(self, *a, width=760, height=428, fps=15, **kw):
         self.width = width
         self.height = height
         self.fps = fps
-        super().__init__(host)
+        super().__init__(*a, **kw)
 
     def create_client(self):
+        print(
+            self.host, self.port, 
+            hl2ss.ChunkSize.PERSONAL_VIDEO, 
+            hl2ss.StreamMode.MODE_1, 
+            self.width, self.height, self.fps, 
+            self.profile, self.bitrate, 'bgr24')
         self.client = hl2ss.rx_decoded_pv(
             self.host, self.port, 
             hl2ss.ChunkSize.PERSONAL_VIDEO, 
@@ -151,9 +158,9 @@ class VLCFrameUpload(StreamUpload):
         hl2ss.StreamPort.RM_VLC_RIGHTRIGHT,
     ]
 
-    def __init__(self, host, cam_idx=0):
+    def __init__(self, host=HL_HOST, cam_idx=0, **kw):
         self.port = self.ports[cam_idx]
-        super().__init__(host)
+        super().__init__(host, **kw)
 
     def create_client(self):
         self.client = hl2ss.rx_decoded_rm_vlc(
@@ -206,7 +213,7 @@ class ImuUpload(StreamUpload):
     chunk_size: int
     mode: int = hl2ss.StreamMode.MODE_0
     def create_client(self):
-        self.client = hl2ss.rx_rm_imu(host, self.port, self.chunk_size, self.mode)
+        self.client = hl2ss.rx_rm_imu(self.host, self.port, self.chunk_size, self.mode)
 
     def adapt_data(self, data) -> bytes:
         imu_array = np.frombuffer(data.payload, dtype = ("u8,u8,f4,f4,f4"))
@@ -229,22 +236,6 @@ class ImuGyroUpload(ImuUpload):
 class ImuMagUpload(ImuUpload):
     port = hl2ss.StreamPort.RM_IMU_MAGNETOMETER
     chunk_size = hl2ss.ChunkSize.RM_IMU_MAGNETOMETER
-
-
-# ----------------------------------- Utils ---------------------------------- #
-
-# def keyboard_listen(on_press):
-#     @asynccontextmanager  # so it can be used with asyncwith
-#     async def listen():
-#         listener = keyboard.Listener(on_press=on_press)
-#         try:
-#             listener.start()
-#             yield 
-#         finally:
-#             listener.join()
-#     return listen()
-
-
 
 
 if __name__ == '__main__':
