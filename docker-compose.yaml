@@ -6,7 +6,7 @@ x-multicast-container: &multicast
       context: .
     environment:
       API_URL: streamer:8000
-      HOLOLENS_URL: 10.18.172.12
+      HOLOLENS_URL: ${HOLOLENS_URL:-10.18.172.12}
     restart: unless-stopped
 
 services:
