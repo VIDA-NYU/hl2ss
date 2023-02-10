@@ -66,7 +66,7 @@ Before running - make sure you:
 
 Then all you need to do is (at the root of the repository):
 ```bash
-docker-compose up -d --build
+HOLOLENS_URL=<Hololens-IP> docker-compose up -d --build
 ```
 
 Then to view the streams, you can run any of these:
