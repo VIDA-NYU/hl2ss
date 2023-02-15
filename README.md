@@ -66,7 +66,7 @@ Before running - make sure you:
 
 Then all you need to do is (at the root of the repository):
 ```bash
-docker-compose up -d --build
+HOLOLENS_URL=<Hololens-IP> docker-compose up -d --build
 ```
 
 Then to view the streams, you can run any of these:
@@ -85,6 +85,16 @@ python viewer/BBN_redis_clients.py imu imuaccel
 python viewer/BBN_redis_clients.py imu imugyro
 python viewer/BBN_redis_clients.py imu imumag
 ```
+
+If you want to change the hl2ss to redis adapters, you can do that in `viewer/BBN_redis_adapters.py`.
+
+For example clients, see `viewer/BBN_redis_clients.py`.
+
+To bring up more adapters that you add - just add them to `docker-compose.yaml`.
+
+This currently handles hololens -> redis -> client flow. If you want to enable flow backwards, the adapter-client flow can be flipped (e.g. put the client code into an adapter container).
+
+This code handles decoded image frames for simplicity.
 
 ## Python client
 
