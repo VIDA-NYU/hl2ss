@@ -73,30 +73,45 @@ class StreamUpload:
 
     def __call__(self):
         while True:
+            print("Starting...")
             asyncio.run(self.forward_async())
             time.sleep(3)
 
     async def forward_async(self):
         self.enable = True
+        print("Trying to connect to TCP client:", self.host, self.port, '...')
         self.create_client()
+        print("Connected!")
 
         if self.research_mode:
+            print("Trying to start research mode subsystem:", self.host, self.port, '...')
             hl2ss.start_subsystem_pv(self.host, self.port)
+            print("Started!")
         try:
+            print("Opening TCP client...")
             self.client.open()
+            print("Opened!")
             try:
-                async with websockets.connect(f'{self.api_url}/data/{self.stream_id}/push?header=0', close_timeout=10) as ws:
+                url = f'{self.api_url}/data/{self.stream_id}/push?header=0'
+                print("Opening Websocket producer...", url)
+                async with websockets.connect(url, close_timeout=10) as ws:
+                    print("Opened!")
                     while self.enable:
                         data = self.get_next_packet()
                         await ws.send(self.adapt_data(data))
                         await asyncio.sleep(1e-5)
             finally:
+                print("Closing TCP client...")
                 self.client.close()
+                print("Closed!")
         except Exception as e:
-            print(e)
+            print("Exception:")
+            print(type(e).__name__, e)
         finally:
             if self.research_mode:
+                print("Closing research mode subsystem:", self.host, self.port, '...')
                 hl2ss.stop_subsystem_pv(self.host, self.port)
+                print("Closed!")
 
 
 # -------------------------------- Main Camera ------------------------------- #
@@ -115,12 +130,6 @@ class PVFrameUpload(StreamUpload):
         super().__init__(*a, **kw)
 
     def create_client(self):
-        print(
-            self.host, self.port, 
-            hl2ss.ChunkSize.PERSONAL_VIDEO, 
-            hl2ss.StreamMode.MODE_1, 
-            self.width, self.height, self.fps, 
-            self.profile, self.bitrate, 'bgr24')
         self.client = hl2ss.rx_decoded_pv(
             self.host, self.port, 
             hl2ss.ChunkSize.PERSONAL_VIDEO, 
