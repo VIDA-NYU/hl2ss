@@ -30,7 +30,7 @@ class exampleApp:
                     d = holoframe.load(buffer)
                     print('timestamp: ', d['time'])
                     print('pose matrix: ', d['rig2world'])
-                    cv2.imshow('image', d['image'] / np.max(d['image']))
+                    cv2.imshow('depth', d['image'] / np.max(d['image']))
                     cv2.imshow('ab', d['infrared'] / np.max(d['infrared']))
                     cv2.waitKey(1)
                     

@@ -74,7 +74,6 @@ class exampleApp:
                 
 
                 img_str = cv2.imencode('.jpg', data.payload, [int(cv2.IMWRITE_JPEG_QUALITY), 70])[1].tobytes()
-                print(len(img_str))
                 pose_info = data.pose.astype('f').tobytes() + data.focal_length.astype('f').tobytes() + data.principal_point.astype('f').tobytes()
                 nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType[port], data.timestamp, width, height, len(img_str), len(pose_info))
                 frame = nyu_header + img_str + pose_info

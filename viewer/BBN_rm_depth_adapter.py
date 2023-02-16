@@ -42,8 +42,6 @@ class exampleApp:
     
     @ptgctl.util.async2sync
     async def run(self, prefix=None):
-        hl2ss.start_subsystem_pv(host, port)
-
         self.enable = True
         
         def on_press(key):
@@ -69,8 +67,6 @@ class exampleApp:
         
         client.close()
         listener.join()
-        
-        hl2ss.stop_subsystem_pv(host, port)
        
 if __name__ == '__main__':
     import fire
