@@ -19,7 +19,8 @@ stream_names = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: 'imuaccel',
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: 'imugyro',
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag',
-    hl2ss.StreamPort.MICROPHONE: 'mic0'
+    hl2ss.StreamPort.MICROPHONE: 'mic0',
+    hl2ss.StreamPort.SPATIAL_INPUT: 'si'
 }
 
 header_version = 3
@@ -34,7 +35,8 @@ port2SensorType = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: holoframe.SensorType.Accel,
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: holoframe.SensorType.Gyro,
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag,
-    hl2ss.StreamPort.MICROPHONE: holoframe.SensorType.Microphone
+    hl2ss.StreamPort.MICROPHONE: holoframe.SensorType.Microphone,
+    hl2ss.StreamPort.SPATIAL_INPUT: holoframe.SensorType.SpatialInput
 }
 
 class rx_encoded_microphone:
