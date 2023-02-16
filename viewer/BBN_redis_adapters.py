@@ -52,7 +52,7 @@ class StreamUpload:
     client=None
     research_mode = False
     # NYU Header Version
-    header_version = 2
+    header_version = 3
 
     port: int
 
@@ -230,7 +230,7 @@ class ImuUpload(StreamUpload):
         imu_timestamps = imu_array['f0'].tobytes()
         nyu_header = struct.pack(
             "<BBQIIII", self.header_version, self.sensor_type, 
-            data.timestamp, 3, imu_array.shape[0], 4, len(imu_timestamps))
+            data.timestamp, 3, imu_array.shape[0], 4 * 3 * imu_array.shape[0], len(imu_timestamps))
         return nyu_header + imu_data + imu_timestamps
 
 

@@ -21,7 +21,7 @@ stream_names = {
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag'
 }
 
-header_version = 2
+header_version = 3
 
 port2SensorType = {
     hl2ss.StreamPort.PERSONAL_VIDEO: holoframe.SensorType.PV,

@@ -69,7 +69,7 @@ class exampleApp:
                 imu_array = np.frombuffer(data.payload, dtype = ("u8,u8,f4,f4,f4"))
                 imu_data = structured_to_unstructured(imu_array[['f2', 'f3', 'f4']]).tobytes()
                 imu_timestamps = imu_array['f0'].tobytes()
-                nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType[port], data.timestamp, 3, imu_array.shape[0], 4, len(imu_timestamps))
+                nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType[port], data.timestamp, 3, imu_array.shape[0], 4 * 3 * imu_array.shape[0], len(imu_timestamps))
                 frame = nyu_header + imu_data + imu_timestamps
                 
                 await ws_push.send_data([frame], [stream_name])
