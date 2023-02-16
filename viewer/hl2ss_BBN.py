@@ -18,7 +18,8 @@ stream_names = {
     hl2ss.StreamPort.RM_DEPTH_LONGTHROW: 'depthlt',
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: 'imuaccel',
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: 'imugyro',
-    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag'
+    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag',
+    hl2ss.StreamPort.MICROPHONE: 'mic0'
 }
 
 header_version = 3
@@ -32,5 +33,19 @@ port2SensorType = {
     hl2ss.StreamPort.RM_DEPTH_LONGTHROW: holoframe.SensorType.DepthLT,
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: holoframe.SensorType.Accel,
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: holoframe.SensorType.Gyro,
-    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag
+    hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag,
+    hl2ss.StreamPort.MICROPHONE: holoframe.SensorType.Microphone
 }
+
+class rx_encoded_microphone:
+    def __init__(self, host, port, chunk, profile):
+        self._client = hl2ss.rx_microphone(host, port, chunk, profile)
+        
+    def open(self):
+        self._client.open()
+
+    def get_next_packet(self):
+        return self._client.get_next_packet()
+
+    def close(self):
+        self._client.close()
