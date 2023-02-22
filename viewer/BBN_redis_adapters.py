@@ -122,6 +122,7 @@ class PVFrameUpload(StreamUpload):
     # Must be > 0
     bitrate = 5*1024*1024
     profile = hl2ss.VideoProfile.H265_MAIN
+    research_mode = True
 
     def __init__(self, *a, width=760, height=428, fps=15, **kw):
         self.width = width
