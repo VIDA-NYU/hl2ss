@@ -23,6 +23,8 @@ class SensorType:
     Mag = 9
     numSensor = 10
     Calibration = 11
+    Microphone = 12
+    SpatialInput = 13
     # !!! these are circumstantial
     Mic = 172
     Hand = 34
@@ -38,7 +40,7 @@ header_dtype = np.dtype([
 header2_dtype = np.dtype([
     ('w', np.uint32),
     ('h', np.uint32),
-    ('stride', np.uint32),
+    ('payload_size', np.uint32),
     ('info_size', np.uint32),
 ])
 
@@ -84,6 +86,8 @@ def load(data, metadata=False, only_header=False):
         return load_v1(parse, read, ftype, d)
     elif version == 2:
         return load_v2(parse, read, ftype, d)
+    elif version == 3:
+        return load_v3(parse, read, ftype, d)
     
     raise ValueError(f"unknown header version: {version}")
     
@@ -170,6 +174,55 @@ def load_v2(parse, read, ftype, d):
         d['rig2cam'] = parse.pop(np.float32, (4,4), T=True)
         return d
 
+def load_v3(parse, read, ftype, d):
+    w, h, payload_size, info_size = parse.pop(header2_dtype)
+    
+    # main
+    if ftype == SensorType.PV:
+        d['image'] = parse.pop_jpeg_image(payload_size, bgr2rgb=False, read=read)
+        d['cam2world'] = parse.pop(np.float32, (4,4), T=True)
+        d['focalX'], d['focalY'] = parse.pop(np.float32, (2,))
+        d['principalX'], d['principalY'] = parse.pop(np.float32, (2,))
+        return d
+
+    # grayscale
+    if ftype in {SensorType.GLF, SensorType.GRR, SensorType.GRF, SensorType.GLL}:
+        rot = -1 if ftype in {SensorType.GLF, SensorType.GRR} else 1
+        d['image'] = parse.pop_jpeg_image(payload_size, rot=rot, read=read)
+        d['rig2world'] = parse.pop(np.float32, (4,4), T=True)
+        return d
+
+    # depth
+    if ftype == SensorType.DepthLT:
+        d['image'] = parse.pop(np.uint16, (h, w), read=read)
+        d['rig2world'] = parse.pop(np.float32, (4,4), T=True)
+        info_size -= np_size(np.float32, shape = (4,4))
+        if info_size > 0:
+            d['infrared'] = parse.pop_jpeg_image(info_size, read=read)
+        return d
+
+    # sensors
+    if ftype in {SensorType.Accel, SensorType.Gyro, SensorType.Mag}:
+        d['data'] = parse.pop(np.float32, (h, w), payload_size, read=read)
+        d['timestamps'] = parse.pop(np.uint64, size=info_size)
+        return d
+
+    # calibration
+    if ftype == SensorType.Calibration:
+        d['lut'] = parse.pop(np.float32, (w * h, 3), read=read)
+        d['rig2cam'] = parse.pop(np.float32, (4,4), T=True)
+        return d
+    
+    if ftype == SensorType.Microphone:
+        d['channels'] = w
+        d['sample_rate'] = h
+        d['data'] = parse.pop(size=payload_size, read=False)
+        return d
+    
+    if ftype == SensorType.SpatialInput:
+        d['data'] = parse.pop(size=payload_size, read=False)
+        return d
+
     raise ValueError(f"unknown frame type: {ftype}")    
     
 
@@ -223,7 +276,7 @@ class ByteParser:
     def _read_json(self, x: memoryview):
         return json.loads(str(x, 'ascii'))
 
-    def pop(self, dtype, shape=None, size=None, read=True, **kw):
+    def pop(self, dtype=None, shape=None, size=None, read=True, **kw):
         x = self._pop_bytes(size or np_size(dtype, shape))
         if read:
             x = self._read_np(x, dtype, shape, **kw)
