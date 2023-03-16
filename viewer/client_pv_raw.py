@@ -12,8 +12,9 @@ from pynput import keyboard
 
 import time
 import numpy as np
-import hl2ss
 import cv2
+import hl2ss_imshow
+import hl2ss
 
 # Settings --------------------------------------------------------------------
 
@@ -64,7 +65,7 @@ else:
     client = hl2ss.rx_pv(host, port, hl2ss.ChunkSize.PERSONAL_VIDEO, mode, width, height, framerate, profile, 1)
     client.open()
 
-    stride = hl2ss.compute_nv12_stride(width)
+    stride = hl2ss.get_nv12_stride(width)
 
     while (enable):
         data = client.get_next_packet()

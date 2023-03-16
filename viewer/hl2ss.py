@@ -2,6 +2,8 @@
 import numpy as np
 import socket
 import struct
+import asyncio
+import websockets.client
 import cv2
 import av
 
@@ -26,6 +28,7 @@ class StreamPort:
 class IPCPort:
     REMOTE_CONFIGURATION = 3809
     SPATIAL_MAPPING      = 3813
+    SCENE_UNDERSTANDING  = 3814
 
 
 # Default Chunk Sizes
@@ -87,7 +90,6 @@ class PngFilterMode:
     Average   = 4
     Paeth     = 5
     Adaptive  = 6
-    RAW       = 0xFF
 
 
 # RM VLC Parameters
@@ -296,7 +298,6 @@ class _SIZEOF:
     LONGLONG = 8
     QWORD    = 8
     DOUBLE   = 8
-    GUID     = 16
 
 
 class _RANGEOF:
@@ -323,18 +324,12 @@ class _client:
     def download(self, total, chunk_size):
         data = bytearray()
 
-        if (chunk_size > total):
-            chunk_size = total
-
         while (total > 0):
+            if (chunk_size > total):
+                chunk_size = total
             chunk = self.recv(chunk_size)
             data.extend(chunk)
             total -= len(chunk)
-            if (chunk_size > total):
-                chunk_size = total
-
-        if (total != 0):
-            raise Exception('download failed')
 
         return data
 
@@ -353,8 +348,28 @@ class _packet:
         self.pose      = pose
 
 
+def pack_packet(packet):
+    buffer = bytearray()
+    buffer.extend(struct.pack('<QI', packet.timestamp, len(packet.payload)))
+    buffer.extend(packet.payload)
+    if (packet.pose is not None):
+        buffer.extend(packet.pose.tobytes())
+    return buffer
+
+
+def unpack_packet(data):
+    timestamp, payload_size = struct.unpack('<QI', data[:12])
+    payload = data[12:(12 + payload_size)]
+    pose = data[(12 + payload_size):]
+    return _packet(timestamp, payload, np.frombuffer(pose, dtype=np.float32).reshape((4, 4)) if (len(pose) == 64) else None)
+
+
+def is_valid_pose(pose):
+    return pose[3, 3] != 0
+
+
 class _unpacker:
-    def __init__(self, mode):
+    def reset(self, mode):
         self._mode = mode
         self._state = 0
         self._buffer = bytearray()
@@ -396,19 +411,6 @@ class _unpacker:
         return _packet(self._timestamp, self._payload, self._pose)
 
 
-def pack_packet(packet):
-    buffer = bytearray()
-    buffer.extend(struct.pack('<QI', packet.timestamp, len(packet.payload)))
-    buffer.extend(packet.payload)
-    if (packet.pose is not None):
-        buffer.extend(packet.pose.tobytes())
-    return buffer
-
-
-def is_valid_pose(pose):
-    return pose[3, 3] != 0
-
-
 #------------------------------------------------------------------------------
 # Packet Gatherer
 #------------------------------------------------------------------------------
@@ -416,9 +418,9 @@ def is_valid_pose(pose):
 class _gatherer:
     def open(self, host, port, chunk_size, mode):
         self._client = _client()
-        self._unpacker = _unpacker(mode)
+        self._unpacker = _unpacker()
         self._chunk_size = chunk_size
-
+        self._unpacker.reset(mode)
         self._client.open(host, port)
         
     def sendall(self, data):
@@ -432,55 +434,6 @@ class _gatherer:
 
     def close(self):
         self._client.close()
-
-
-#------------------------------------------------------------------------------
-# File I/O
-#------------------------------------------------------------------------------
-
-class _Header:
-    def __init__(self, header):
-        self.port = header[0]
-        self.mode = header[1]
-        self.profile = header[2]
-
-
-class writer:
-    def open(self, filename, port, mode, profile):
-        self._data = open(filename, 'wb')
-        self._data.write(struct.pack('<HBB', port, mode, profile if (profile is not None) else _RANGEOF.U8_MAX))
-
-    def write(self, packet):
-        self._data.write(pack_packet(packet))
-
-    def close(self):
-        self._data.close()
-
-
-class reader:
-    def open(self, filename, chunk_size):
-        self._data = open(filename, 'rb')        
-        self._header = _Header(struct.unpack('<HBB', self._data.read(_SIZEOF.WORD + 2 * _SIZEOF.BYTE)))
-        self._unpacker = _unpacker(self._header.mode)
-        self._chunk_size = chunk_size
-        self._eof = False
-
-    def get_header(self):
-        return self._header
-        
-    def read(self):
-        while (True):
-            if (self._unpacker.unpack()):
-                return self._unpacker.get()
-            if (self._eof):
-                return None
-
-            chunk = self._data.read(self._chunk_size)
-            self._eof = len(chunk) < self._chunk_size
-            self._unpacker.extend(chunk)
-
-    def close(self):
-        self._data.close()
 
 
 #------------------------------------------------------------------------------
@@ -560,54 +513,84 @@ def _create_configuration_for_pv_mode2(mode, width, height, framerate):
 #------------------------------------------------------------------------------
 
 def _connect_client_rm_vlc(host, port, chunk_size, mode, profile, bitrate):
-    c = _gatherer()
-    c.open(host, port, chunk_size, mode)
-    c.sendall(_create_configuration_for_rm_vlc(mode, profile, bitrate))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, mode)
+        c.sendall(_create_configuration_for_rm_vlc(mode, profile, bitrate))
     return c
 
 
 def _connect_client_rm_depth_ahat(host, port, chunk_size, mode, profile, bitrate):
-    c = _gatherer()
-    c.open(host, port, chunk_size, mode)
-    c.sendall(_create_configuration_for_rm_depth_ahat(mode, profile, bitrate))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, mode)
+        c.sendall(_create_configuration_for_rm_depth_ahat(mode, profile, bitrate))
     return c
 
 
 def _connect_client_rm_depth_longthrow(host, port, chunk_size, mode, png_filter):
-    c = _gatherer()
-    c.open(host, port, chunk_size, mode)
-    c.sendall(_create_configuration_for_rm_depth_longthrow(mode, png_filter))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, mode)
+        c.sendall(_create_configuration_for_rm_depth_longthrow(mode, png_filter))
     return c
 
 
 def _connect_client_rm_imu(host, port, chunk_size, mode):
-    c = _gatherer()
-    c.open(host, port, chunk_size, mode)
-    c.sendall(_create_configuration_for_rm_imu(mode))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, mode)
+        c.sendall(_create_configuration_for_rm_imu(mode))
     return c
 
 
 def _connect_client_pv(host, port, chunk_size, mode, width, height, framerate, profile, bitrate):
-    c = _gatherer()
-    c.open(host, port, chunk_size, mode)
-    c.sendall(_create_configuration_for_pv(mode, width, height, framerate, profile, bitrate))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, mode)
+        c.sendall(_create_configuration_for_pv(mode, width, height, framerate, profile, bitrate))
     return c
 
 
 def _connect_client_microphone(host, port, chunk_size, profile):
-    c = _gatherer()
-    c.open(host, port, chunk_size, StreamMode.MODE_0)
-    c.sendall(_create_configuration_for_microphone(profile))
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, StreamMode.MODE_0)
+        c.sendall(_create_configuration_for_microphone(profile))
     return c
 
 
 def _connect_client_si(host, port, chunk_size):
-    c = _gatherer()
-    c.open(host, port, chunk_size, StreamMode.MODE_0)
+    if (is_rs_host(host)):
+        c = _rs_gatherer()
+        c.open(host, port, None)
+    else:
+        c = _gatherer()
+        c.open(host, port, chunk_size, StreamMode.MODE_0)
     return c
 
 
 def start_subsystem_pv(host, port):
+    if (is_rs_host(host)):
+        return
     c = _client()
     c.open(host, port)
     c.sendall(_create_configuration_for_pv_mode2(0x7, 1920, 1080, 30))
@@ -615,6 +598,8 @@ def start_subsystem_pv(host, port):
 
 
 def stop_subsystem_pv(host, port):
+    if (is_rs_host(host)):
+        return
     c = _client()
     c.open(host, port)
     c.sendall(_create_configuration_for_pv_mode2(0xB, 1920, 1080, 30))
@@ -622,10 +607,23 @@ def stop_subsystem_pv(host, port):
 
 
 #------------------------------------------------------------------------------
+# Context Manager
+#------------------------------------------------------------------------------
+
+class _context_manager:
+    def __enter__(self):
+        self.open()
+        return self
+    
+    def __exit__(self, *args):
+        self.close()
+
+
+#------------------------------------------------------------------------------
 # Receiver Wrappers
 #------------------------------------------------------------------------------
 
-class rx_rm_vlc:
+class rx_rm_vlc(_context_manager):
     def __init__(self, host, port, chunk, mode, profile, bitrate):
         self.host = host
         self.port = port
@@ -647,7 +645,7 @@ class rx_rm_vlc:
         self._client.close()
 
 
-class rx_rm_depth_ahat:
+class rx_rm_depth_ahat(_context_manager):
     def __init__(self, host, port, chunk, mode, profile, bitrate):
         self.host = host
         self.port = port
@@ -666,7 +664,7 @@ class rx_rm_depth_ahat:
         self._client.close()
 
 
-class rx_rm_depth_longthrow:
+class rx_rm_depth_longthrow(_context_manager):
     def __init__(self, host, port, chunk, mode, png_filter):
         self.host = host
         self.port = port
@@ -684,7 +682,7 @@ class rx_rm_depth_longthrow:
         self._client.close()
 
 
-class rx_rm_imu:
+class rx_rm_imu(_context_manager):
     def __init__(self, host, port, chunk, mode):
         self.host = host
         self.port = port
@@ -701,7 +699,7 @@ class rx_rm_imu:
         self._client.close()
 
 
-class rx_pv:
+class rx_pv(_context_manager):
     def __init__(self, host, port, chunk, mode, width, height, framerate, profile, bitrate):
         self.host = host
         self.port = port
@@ -717,18 +715,13 @@ class rx_pv:
         self._client = _connect_client_pv(self.host, self.port, self.chunk, self.mode, self.width, self.height, self.framerate, self.profile, self.bitrate)
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
-        frame = unpack_pv(data.payload)
-        data.payload = frame.picture
-        data.focal_length = frame.focal_length
-        data.principal_point = frame.principal_point
-        return data
+        return self._client.get_next_packet()
 
     def close(self):
         self._client.close()
 
 
-class rx_microphone:
+class rx_microphone(_context_manager):
     def __init__(self, host, port, chunk, profile):
         self.host = host
         self.port = port
@@ -746,7 +739,7 @@ class rx_microphone:
         self._client.close()
 
 
-class rx_si:
+class rx_si(_context_manager):
     def __init__(self, host, port, chunk):
         self.host = host
         self.port = port
@@ -806,6 +799,20 @@ def get_audio_codec_bitrate(profile):
     return None
 
 
+def get_gop_size(profile, framerate):
+    name = get_video_codec_name(profile)
+    return 1 if ((name != 'h264') and (name != 'hevc')) else (2 * framerate)
+
+
+def get_video_codec_default_factor(profile):
+    name = get_video_codec_name(profile)
+    return 4/420 if (name == 'h264') else 1/140 if (name == 'hevc') else 1.0
+
+
+def get_video_codec_default_bitrate(width, height, fps, profile):
+    return int(width*height*fps*12*get_video_codec_default_factor(profile))
+
+
 #------------------------------------------------------------------------------
 # RM VLC Decoder
 #------------------------------------------------------------------------------
@@ -861,7 +868,7 @@ def _unpack_rm_depth_ahat_nv12_as_yuv420p(yuv):
 class decode_rm_depth_ahat:
     def __init__(self, profile):
         self.profile = profile
-
+   
     def create(self):
         self._codec = av.CodecContext.create(get_video_codec_name(self.profile), 'r')
 
@@ -909,17 +916,17 @@ class unpack_rm_imu:
 #------------------------------------------------------------------------------
 
 class _PV_Frame:
-    def __init__(self, picture, focal_length, principal_point):
-        self.picture         = picture
-        self.focal_length    = focal_length
-        self.principal_point = principal_point
+    def __init__(self, image, focal_length, principal_point):
+        self.image           = image
+        self.focal_length    = np.frombuffer(focal_length, dtype=np.float32)
+        self.principal_point = np.frombuffer(principal_point, dtype=np.float32)
 
 
 def unpack_pv(payload):
     return _PV_Frame(payload[:-16], payload[-16:-8], payload[-8:])
 
 
-def compute_nv12_stride(width):
+def get_nv12_stride(width):
     return width + ((64 - (width & 63)) & 63)
 
 
@@ -1076,98 +1083,97 @@ class unpack_si:
 # Decoded Receivers
 #------------------------------------------------------------------------------
 
-class rx_decoded_rm_vlc:
+class rx_decoded_rm_vlc(rx_rm_vlc):
     def __init__(self, host, port, chunk, mode, profile, bitrate):
-        self._client = rx_rm_vlc(host, port, chunk, mode, profile, bitrate)
+        super().__init__(host, port, chunk, mode, profile, bitrate)
         self._codec = decode_rm_vlc(profile)
 
     def open(self):
         self._codec.create()
-        self._client.open()
+        super().open()
         self.get_next_packet()
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
+        data = super().get_next_packet()
         data.payload = self._codec.decode(data.payload)
         return data
 
     def close(self):
-        self._client.close()
+        super().close()
 
 
-class rx_decoded_rm_depth_ahat:
+class rx_decoded_rm_depth_ahat(rx_rm_depth_ahat):
     def __init__(self, host, port, chunk, mode, profile, bitrate):
-        self._client = rx_rm_depth_ahat(host, port, chunk, mode, profile, bitrate)
+        super().__init__(host, port, chunk, mode, profile, bitrate)
         self._codec = decode_rm_depth_ahat(profile)
 
     def open(self):
         self._codec.create()
-        self._client.open()
+        super().open()
         self.get_next_packet()
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
+        data = super().get_next_packet()
         data.payload = self._codec.decode(data.payload)
         return data
 
     def close(self):
-        self._client.close()
+        super().close()
 
 
-class rx_decoded_rm_depth_longthrow:
+class rx_decoded_rm_depth_longthrow(rx_rm_depth_longthrow):
     def __init__(self, host, port, chunk, mode, png_filter):
-        self._client = rx_rm_depth_longthrow(host, port, chunk, mode, png_filter)
+        super().__init__(host, port, chunk, mode, png_filter)
 
     def open(self):
-        self._client.open()
+        super().open()
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
+        data = super().get_next_packet()
         data.payload = decode_rm_depth_longthrow(data.payload)
         return data
 
     def close(self):
-        self._client.close()
+        super().close()
 
 
-class rx_decoded_pv:
+class rx_decoded_pv(rx_pv):
     def __init__(self, host, port, chunk, mode, width, height, framerate, profile, bitrate, format):
-        self._client = rx_pv(host, port, chunk, mode, width, height, framerate, profile, bitrate)
+        super().__init__(host, port, chunk, mode, width, height, framerate, profile, bitrate)
+        self.format = format
         self._codec = decode_pv(profile)
-        self._format = format
 
     def open(self):        
         self._codec.create()
-        self._client.open()
+        super().open()
         self.get_next_packet()
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
-        data.payload = self._codec.decode(data.payload, self._format)
-        data.focal_length = np.frombuffer(data.focal_length, dtype=np.float32)
-        data.principal_point = np.frombuffer(data.principal_point, dtype=np.float32)
+        data = super().get_next_packet()
+        data.payload = unpack_pv(data.payload)
+        data.payload.image = self._codec.decode(data.payload.image, self.format)
         return data
 
     def close(self):
-        self._client.close()
+        super().close()
 
 
-class rx_decoded_microphone:
+class rx_decoded_microphone(rx_microphone):
     def __init__(self, host, port, chunk, profile):
-        self._client = rx_microphone(host, port, chunk, profile)
+        super().__init__(host, port, chunk, profile)
         self._codec = decode_microphone(profile)
         
     def open(self):
         self._codec.create()
-        self._client.open()
+        super().open()
 
     def get_next_packet(self):
-        data = self._client.get_next_packet()
+        data = super().get_next_packet()
         data.payload = self._codec.decode(data.payload)
         return data
 
     def close(self):
-        self._client.close()
+        super().close()
 
 
 #------------------------------------------------------------------------------
@@ -1393,7 +1399,9 @@ class _PortName:
           'remote_configuration', 
           'personal_video', 
           'microphone', 
-          'spatial_input']
+          'spatial_input', 
+          'spatial_mapping', 
+          'scene_understanding']
 
 
 def get_port_index(port):
@@ -1408,7 +1416,7 @@ def get_port_name(port):
 # Remote Configuration
 #------------------------------------------------------------------------------
 
-class tx_rc:
+class ipc_rc:
     def __init__(self, host, port):
         self.host = host
         self.port = port
@@ -1620,8 +1628,8 @@ class ipc_sm:
     def get_observed_surfaces(self):
         self._client.sendall(struct.pack('<B', ipc_sm._CMD_GET_OBSERVED_SURFACES))
         count = struct.unpack('<Q', self._client.download(_SIZEOF.QWORD, ChunkSize.SINGLE_TRANSFER))[0]
-        ids = self._client.download(count * _SIZEOF.GUID, ChunkSize.SINGLE_TRANSFER)
-        return [ids[(i*_SIZEOF.GUID):((i+1)*_SIZEOF.GUID)] for i in range(0, count)]
+        ids = self._client.download(count * 16, ChunkSize.SINGLE_TRANSFER)
+        return [ids[(i*16):((i+1)*16)] for i in range(0, count)]
     
     def _download_mesh(self):
         header = self._client.download(ipc_sm._MESH_INFO_HEADER_SIZE, ChunkSize.SINGLE_TRANSFER)
@@ -1663,6 +1671,237 @@ class ipc_sm:
         meshes = {index : mesh for index, mesh in self._download_meshes(count)}
         return meshes
 
+    def close(self):
+        self._client.close()
+
+
+#------------------------------------------------------------------------------
+# Scene Understanding
+#------------------------------------------------------------------------------
+
+class SU_MeshLOD:
+    Coarse = 0
+    Medium = 1
+    Fine = 2
+    Unlimited = 255
+
+
+class SU_KindFlag:
+    Background = 1
+    Wall = 2
+    Floor = 4
+    Ceiling = 8
+    Platform = 16
+    Unknown = 32
+    World = 64
+    CompletelyInferred = 128
+
+
+class SU_Create:
+    New = 0
+    NewFromPrevious = 1
+
+
+class SU_Kind:
+    Background = 0,
+    Wall = 1,
+    Floor = 2,
+    Ceiling = 3,
+    Platform = 4,
+    Unknown = 247,
+    World = 248,
+    CompletelyInferred = 249,
+
+
+class su_task:
+    def __init__(self, enable_quads, enable_meshes, enable_only_observed, enable_world_mesh, mesh_lod, query_radius, create_mode, kind_flags, get_orientation, get_position, get_location_matrix, get_quad, get_meshes, get_collider_meshes, guid_list):
+        self.enable_quads = enable_quads
+        self.enable_meshes = enable_meshes
+        self.enable_only_observed = enable_only_observed
+        self.enable_world_mesh = enable_world_mesh
+        self.mesh_lod = mesh_lod
+        self.query_radius = query_radius
+        self.create_mode = create_mode
+        self.kind_flags = kind_flags
+        self.get_orientation = get_orientation
+        self.get_position = get_position
+        self.get_location_matrix = get_location_matrix
+        self.get_quad = get_quad
+        self.get_meshes = get_meshes
+        self.get_collider_meshes = get_collider_meshes
+        self.guid_list = guid_list
+
+
+class _su_mesh:
+    def __init__(self, vertex_positions, triangle_indices):
+        self.vertex_positions = vertex_positions
+        self.triangle_indices = triangle_indices
+
+    def unpack(self):
+        self.vertex_positions = np.frombuffer(self.vertex_positions, dtype=np.float32).reshape((-1, 3))
+        self.triangle_indices = np.frombuffer(self.triangle_indices, dtype=np.uint32).reshape((-1, 3))
+
+
+class _su_item:
+    def __init__(self, id, kind, orientation, position, location, alignment, extents, meshes, collider_meshes):
+        self.id = id
+        self.kind = kind
+        self.orientation = orientation
+        self.position = position
+        self.location = location
+        self.alignment = alignment
+        self.extents = extents
+        self.meshes = meshes
+        self.collider_meshes = collider_meshes
+
+    def unpack(self):
+        self.kind = np.frombuffer(self.kind, dtype=np.int32)
+        self.orientation = np.frombuffer(self.orientation, dtype=np.float32)
+        self.position = np.frombuffer(self.position, dtype=np.float32)
+        self.location = np.frombuffer(self.location, dtype=np.float32).reshape((-1, 4))
+        self.alignment = np.frombuffer(self.alignment, np.int32)
+        self.extents = np.frombuffer(self.extents, dtype=np.float32)
+
+
+class _su_result:
+    def __init__(self, extrinsics, pose, items):        
+        self.extrinsics = extrinsics
+        self.pose = pose
+        self.items = items
+
+    def unpack(self):
+        self.extrinsics = np.frombuffer(self.extrinsics, dtype=np.float32).reshape((4, 4))
+        self.pose = np.frombuffer(self.pose, dtype=np.float32).reshape((4, 4))
+
+
+class ipc_su:
+    def __init__(self, host, port):
+        self.host = host
+        self.port = port
+        self._client = _client()
+
+    def open(self):
+        self._client.open(self.host, self.port)
+
+    def _download_mesh(self):
+        elements_vertices, elements_indices = struct.unpack('<II', self._client.download(2 * _SIZEOF.DWORD, ChunkSize.SINGLE_TRANSFER))
+        vpl = elements_vertices * _SIZEOF.DWORD
+        til = elements_indices * _SIZEOF.DWORD
+        data = self._client.download(vpl + til, ChunkSize.SINGLE_TRANSFER)
+        return _su_mesh(data[:vpl], data[vpl:])
+
+    def _download_meshes(self):
+        return [self._download_mesh() for _ in range(0, struct.unpack('<I', self._client.download(_SIZEOF.DWORD, ChunkSize.SINGLE_TRANSFER))[0])]
+    
+    def _download_item(self, bi, bk, bo, bp, bl, ba, be, bm, download_meshes, download_collider_meshes):
+        d = self._client.download(bm, ChunkSize.SINGLE_TRANSFER)
+        return _su_item(d[bi:bk], d[bk:bo], d[bo:bp], d[bp:bl], d[bl:ba], d[ba:be], d[be:bm], self._download_meshes() if (download_meshes) else [], self._download_meshes() if (download_collider_meshes) else [])
+    
+    def query(self, task):
+        msg = bytearray()
+        msg.extend(struct.pack('<BBBBIfBBBBBBBBI', task.enable_quads, task.enable_meshes, task.enable_only_observed, task.enable_world_mesh, task.mesh_lod, task.query_radius, task.create_mode, task.kind_flags, task.get_orientation, task.get_position, task.get_location_matrix, task.get_quad, task.get_meshes, task.get_collider_meshes, len(task.guid_list)))
+        for guid in task.guid_list:
+            msg.extend(guid)
+        self._client.sendall(msg)
+        header = self._client.download(136, ChunkSize.SINGLE_TRANSFER)
+        status = struct.unpack('<I', header[:4])[0]
+        if (status != 0):
+            return None
+        he = 4
+        hp = he + 64
+        hi = hp + 64
+        bi = 0
+        bk = bi + 16
+        bo = bk + 4
+        bp = bo + (16 * task.get_orientation)
+        bl = bp + (12 * task.get_position)
+        ba = bl + (64 * task.get_location_matrix)
+        be = ba + (4 * task.get_quad)
+        bm = be + (8 * task.get_quad)
+        return _su_result(header[he:hp], header[hp:hi], [self._download_item(bi, bk, bo, bp, bl, ba, be, bm, task.get_meshes, task.get_collider_meshes) for _ in range(0, struct.unpack('<I', header[132:])[0])])
+
+    def close(self):
+        self._client.close()
+
+
+#//////////////////////////////////////////////////////////////////////////////
+# Extension: redis-streamer (NYU)
+#//////////////////////////////////////////////////////////////////////////////
+
+#------------------------------------------------------------------------------
+# GOP Tagging
+#------------------------------------------------------------------------------
+
+class _extension_gop:
+    def __init__(self, gop_size):
+        self.aliased_index = 0
+        self.gop_size = gop_size
+
+    def extend(self, data):
+        data.extend(struct.pack('<B', self.aliased_index))
+        self.aliased_index = (self.aliased_index + 1) % self.gop_size
+
+
+#------------------------------------------------------------------------------
+# API redis-streamer
+#------------------------------------------------------------------------------
+
+def is_rs_host(host):
+    return ':' in host
+
+
+def _rs_get_stream_url_push(host, port):
+    return f'ws://{host}/data/{get_port_name(port)}/push?header=0'
+
+
+def _rs_get_stream_url_pull(host, port):
+    return f'ws://{host}/data/{get_port_name(port)}/pull?header=0'
+
+
+#------------------------------------------------------------------------------
+# Network Client (Websockets)
+#------------------------------------------------------------------------------
+
+class _rs_client:
+    def open(self, host, port, max_size):
+        self._loop = asyncio.get_event_loop()
+        self._client = self._loop.run_until_complete(websockets.client.connect(_rs_get_stream_url_pull(host, port), max_size=max_size, compression=None))
+
+    def recv(self):
+        while (True):
+            data = self._loop.run_until_complete(self._client.recv())
+            if (len(data) > 0):
+                return data
+
+    def close(self):
+        self._loop.run_until_complete(self._client.close())
+
+
+#------------------------------------------------------------------------------
+# Packet Gatherer (Websockets)
+#------------------------------------------------------------------------------
+
+class _rs_gatherer:
+    def open(self, host, port, max_size):
+        self._genlock = False
+        self._client = _rs_client()
+        self._client.open(host, port, max_size)
+
+    def _fetch(self):
+        data = self._client.recv()
+        raw_packet = data[:-1]
+        aliased_index = struct.unpack('<B', data[-1:])[0]
+        return (aliased_index, raw_packet)
+    
+    def get_next_packet(self):
+        aliased_index, data = self._fetch()
+        while (not self._genlock):
+            if (aliased_index == 0): 
+                self._genlock = True
+            else:
+                aliased_index, data = self._fetch()
+        return unpack_packet(data)
+    
     def close(self):
         self._client.close()
 

@@ -1,19 +1,23 @@
 # HoloLens 2 Sensor Streaming
 
-HoloLens 2 server application for streaming sensor data via TCP. Created to stream HoloLens data to a Linux machine for research purposes. Also works on Windows and OS X.
+HoloLens 2 server software and Python client library for streaming sensor data via TCP. Created to stream HoloLens data to a Linux machine for research purposes but also works on Windows and OS X. The server is offered as a standalone application (appxbundle) or Unity plugin (dll).
 
 **Supported streams**
 
-- Research Mode Visible Light Cameras (4 cameras, 640x480 @ 30 FPS, Grayscale, H264 or HEVC encoded)
+- Research Mode Visible Light Cameras (640x480 @ 30 FPS, Grayscale, H264 or HEVC encoded)
+  - Left Front
+  - Left Left
+  - Right Front
+  - Right Right
 - Research Mode Depth
   - AHAT (512x512 @ 45 FPS, 16-bit Depth + 16-bit AB as NV12 luma+chroma, H264 or HEVC encoded) 
-  - Long Throw (320x288 @ 5 FPS, 16-bit Depth + 16-bit AB encoded as a single 32-bit PNG)
+  - Long Throw (320x288 @ 5 FPS, 16-bit Depth + 16-bit AB, encoded as a single 32-bit PNG)
 - Research Mode IMU
-  - Accelerometer
-  - Gyroscope
+  - Accelerometer (m/s^2)
+  - Gyroscope (deg/s)
   - Magnetometer
 - Front Camera (1920x1080 @ 30 FPS, RGB, H264 or HEVC encoded)
-- Microphone (2 channels, 48000 Hz, AAC encoded)
+- Microphone (2 channels @ 48000 Hz, PCM 16, AAC encoded)
 - Spatial Input (60 Hz)
   - Head Tracking
   - Eye Tracking
@@ -21,25 +25,35 @@ HoloLens 2 server application for streaming sensor data via TCP. Created to stre
   
 **Additional features**
 
-- Download calibration (e.g., camera intrinsics) for the Front Camera and Research Mode sensors (except RM IMU Magnetometer).
+- Access to Spatial Mapping and Scene Understanding data (Experimental).
+- Download calibration data for the Front Camera and Research Mode sensors (except RM IMU Magnetometer).
 - Optional per-frame pose for the Front Camera and Research Mode sensors streams.
 - Client can configure the bitrate of the H264, HEVC, and AAC encoded streams.
-- For the Front Camera, the client can configure the resolution, framerate, focus, white balance, and exposure (see [etc/hl2_capture_formats.txt](https://github.com/jdibenes/hl2ss/blob/main/etc/hl2_capture_formats.txt) for a list of supported formats).
-- Access to Spatial Mapping data (Experimental).
+- Client can configure the resolution and framerate of the Front Camera. See [etc/pv_configurations.txt](https://github.com/jdibenes/hl2ss/blob/main/etc/pv_configurations.txt) for a list of supported configurations.
+- Client can configure the focus, white balance, and exposure of the Front Camera. See [viewer/client_rc.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rc.py).
+- Frame timestamps can be converted to [Windows FILETIME](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-filetime) (UTC) for external synchronization. See [viewer/client_rc.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rc.py).
 
 ## Preparation
 
-Before using the server software, configure your HoloLens as follows:
+Before using the server software configure your HoloLens as follows:
 
 1. Enable developer mode: Settings -> Update & Security -> For developers -> Use developer features.
 2. Enable device portal: Settings -> Update & Security -> For developers -> Device Portal.
-3. Enable research mode: Refer to the **Enabling Research Mode** section in [HoloLens Research Mode](https://docs.microsoft.com/en-us/windows/mixed-reality/develop/advanced-concepts/research-mode).
+3. Enable research mode: Refer to the Enabling Research Mode section in [HoloLens Research Mode](https://docs.microsoft.com/en-us/windows/mixed-reality/develop/advanced-concepts/research-mode).
 
 Please note that **enabling Research Mode on the HoloLens increases battery usage**.
 
 ## Installation (sideloading)
 
-The server software is distributed as a single appxbundle file.
+The server application is distributed as a single appxbundle file and can be installed using one of the two following methods.
+
+**Method 1**
+
+1. On your HoloLens, open Microsoft Edge and navigate to this repository.
+2. Download the [latest appxbundle](https://github.com/jdibenes/hl2ss/releases).
+3. Open the appxbundle and tap Install.
+
+**Method 2**
 
 1. Download the [latest appxbundle](https://github.com/jdibenes/hl2ss/releases).
 2. Go to the Device Portal (type the IP address of your HoloLens in the address bar of your preferred web browser) and upload the appxbundle to the HoloLens (System -> File explorer -> Downloads).
@@ -49,7 +63,7 @@ You can find the server application (hl2ss) in the All apps list.
 
 ## Permissions
 
-The first time the server runs it will ask for the necessary permissions to access sensor data. If there are any issues, please verify that the server application (hl2ss.exe) has access to:
+The first time the server runs it will ask for the necessary permissions to access sensor data. If there are any issues please verify that the server application (hl2ss.exe) has access to:
 
 - Camera (Settings -> Privacy -> Camera).
 - Eye tracker (Settings -> Privacy -> Eye tracker).
@@ -98,7 +112,10 @@ This code handles decoded image frames for simplicity.
 
 ## Python client
 
-The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/viewer) directory demonstrate how to connect to the server, receive the data, unpack it, and decode it in real time. Run the server application on your HoloLens and set the host variable of the Python scripts to your HoloLens IP address.
+The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/viewer) directory demonstrate how to connect to the server, receive the data, unpack it, and decode it in real time. Additional samples show how to associate data from multiple streams. Run the server on your HoloLens and set the host variable of the Python scripts to your HoloLens IP address.
+
+**Interfaces**
+
 - RM VLC: [viewer/client_rm_vlc.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rm_vlc.py)
 - RM Depth AHAT: [viewer/client_rm_depth_ahat.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rm_depth_ahat.py)
 - RM Depth Long Throw: [viewer/client_rm_depth_longthrow.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rm_depth_longthrow.py)
@@ -108,41 +125,48 @@ The Python scripts in the [viewer](https://github.com/jdibenes/hl2ss/tree/main/v
 - Spatial Input: [viewer/client_si.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_si.py)
 - Remote Configuration: [viewer/client_rc.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_rc.py)
 - Spatial Mapping: [viewer/client_sm.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_sm.py)
+- Scene Understanding: [viewer/client_su.py](https://github.com/jdibenes/hl2ss/blob/main/viewer/client_su.py)
 
-Required packages:
+**Required packages**
 
 - [OpenCV](https://github.com/opencv/opencv-python) `pip install opencv-python`
 - [PyAV](https://github.com/PyAV-Org/PyAV) `pip install av`
 - [NumPy](https://numpy.org/) `pip install numpy`
+- [Websockets](https://github.com/aaugustin/websockets) `pip install websockets`
 
-Optional packages used by some of the samples:
+**Optional packages**
 
 - [pynput](https://github.com/moses-palmer/pynput) `pip install pynput`
 - [Open3D](http://www.open3d.org/) `pip install open3d`
 - [PyAudio](https://people.csail.mit.edu/hubert/pyaudio/) `pip install PyAudio`
+- [MMDetection](https://github.com/open-mmlab/mmdetection)
+
+**Data Details**
+
+- Right-handed coordinate system with +y => up, +x => right, and -z => forward.
+- For 3D points the order is [x, y, z] expressed in meters.
+- For quaternions (orientations) the order is [x, y, z, w].
+- For RM Depth Long Throw divide depth by 1000 to convert to meters.
+- For RM Depth AHAT divide depth by 250 to convert to meters.
+- [Hand data format](https://learn.microsoft.com/en-us/uwp/api/windows.perception.people.jointpose?view=winrt-22621).
 
 ## Known issues and limitations
 
 - Multiple streams can be active at the same time but only one client per stream is allowed.
-- Ocassionally, the application might crash when accessing the Front Camera and RM Depth Long Throw streams simultaneously. See https://github.com/microsoft/HoloLens2ForCV/issues/142.
-- Currently, it is not possible to access the Front Camera and RM Depth AHAT streams simultaneously without downgrading the HoloLens 2 OS. See https://github.com/microsoft/HoloLens2ForCV/issues/133.
+- Ocassionally, the server might crash when accessing the Front Camera and RM Depth Long Throw streams simultaneously. See https://github.com/microsoft/HoloLens2ForCV/issues/142.
+- Currently, it is not possible to access the Front Camera and RM Depth AHAT streams simultaneously without downgrading the HoloLens OS. See https://github.com/microsoft/HoloLens2ForCV/issues/133.
 - The RM Depth AHAT and RM Depth Long Throw streams cannot be accessed simultaneously.
-- The Python scripts might freeze under some configurations. See https://github.com/PyAV-Org/PyAV/issues/978 and https://github.com/opencv/opencv/issues/21952 for details and workarounds.
-- Building for x86 and x64 (HoloLens emulator), and ARM is not supported.
 
 ## Build from source and deploy
 
-Building requires a Windows 10 machine:
+Building the server application and the Unity plugin requires a Windows 10 machine.
 
 1. [Install the tools](https://docs.microsoft.com/en-us/windows/mixed-reality/develop/install-the-tools).
 2. Open the Visual Studio solution (sln file in the [hl2ss](https://github.com/jdibenes/hl2ss/tree/main/hl2ss) folder) in Visual Studio 2022.
-3. [Pair your HoloLens 2](https://learn.microsoft.com/en-us/windows/mixed-reality/develop/advanced-concepts/using-visual-studio?tabs=hl2#pairing-your-device).
-4. Build Release ARM64.
-    - If you get an error saying that hl2ss.winmd does not exist, copy the hl2ss.winmd file from [etc](https://github.com/jdibenes/hl2ss/tree/main/etc) into the hl2ss\ARM64\Release\hl2ss folder.
-5. In the Solution Explorer, right click the hl2ss project and select Properties. Navigate to Configuration Properties -> Debugging and set Machine Name to your HoloLens IP address.
-6. Run. The application will remain installed on the HoloLens even after power off.
-
-This process also builds the Unity plugin.
+3. Set build configuration to Release ARM64. Building for x86 and x64 (HoloLens emulator), and ARM is not supported. 
+4. In the Solution Explorer, right click the hl2ss project and select Properties. Navigate to Configuration Properties -> Debugging and set Machine Name to your HoloLens IP address.
+5. Build (Build -> Build Solution). If you get an error saying that hl2ss.winmd does not exist, copy the hl2ss.winmd file from [etc](https://github.com/jdibenes/hl2ss/tree/main/etc) into the hl2ss\ARM64\Release\hl2ss folder. You can find the Unity plugin in the hl2ss\ARM64\Release\plugin folder.
+6. Run (Remote Machine). You may need to [pair your HoloLens](https://learn.microsoft.com/en-us/windows/mixed-reality/develop/advanced-concepts/using-visual-studio?tabs=hl2#pairing-your-device). The server application will remain installed on the HoloLens even after power off.
 
 ## Unity plugin (DLL)
 
@@ -204,7 +228,7 @@ This process is described later in this section.
 7. Navigate to Configuration Properties -> Linker -> Input -> Additional Dependencies and add hl2ss.lib.
 8. Open App.cpp and edit it as follows:
     1. `#include <hl2ss.h>` after the other includes.
-    2. At the end of the `App::SetWindow(CoreWindow^ window)` method, right before the closing `}`, add `InitializeStreams(HL2SS_ENABLE_RM | HL2SS_ENABLE_MC | HL2SS_ENABLE_PV | HL2SS_ENABLE_SI | HL2SS_ENABLE_RC | HL2SS_ENABLE_SM);`.
+    2. At the end of the `App::SetWindow(CoreWindow^ window)` method, right before the closing `}`, add `InitializeStreams(HL2SS_ENABLE_RM | HL2SS_ENABLE_MC | HL2SS_ENABLE_PV | HL2SS_ENABLE_SI | HL2SS_ENABLE_RC | HL2SS_ENABLE_SM | HL2SS_ENABLE_SU);`.
 9. Follow step 11 of the previous section.
 
 **Remote Unity Scene**
