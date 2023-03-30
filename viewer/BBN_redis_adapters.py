@@ -140,14 +140,14 @@ class PVFrameUpload(StreamUpload):
 
     def adapt_data(self, data) -> bytes:
         '''Pack image as JPEG with header.'''
-        img_str = cv2.imencode('.jpg', data.payload)[1].tobytes()
+        img_str = cv2.imencode('.jpg', data.payload.image)[1].tobytes()
         pose_info = (
             data.pose.astype('f').tobytes() + 
-            data.focal_length.astype('f').tobytes() + 
-            data.principal_point.astype('f').tobytes())
+            data.payload.focal_length.astype('f').tobytes() + 
+            data.payload.principal_point.astype('f').tobytes())
         nyu_header = struct.pack(
             "<BBQIIII", self.header_version, self.sensor_type, 
-            data.timestamp, data.payload.shape[1], data.payload.shape[0], 
+            data.timestamp, data.payload.image.shape[1], data.payload.image.shape[0], 
             len(img_str), len(pose_info))
         return nyu_header + img_str + pose_info
 
