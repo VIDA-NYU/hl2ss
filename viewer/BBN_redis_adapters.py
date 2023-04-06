@@ -31,6 +31,7 @@ port2stream_id = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: 'imuaccel',
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: 'imugyro',
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag',
+    hl2ss.StreamPort.SPATIAL_INPUT: 'si',
 }
 
 port2sensor_type = {
@@ -43,6 +44,7 @@ port2sensor_type = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: holoframe.SensorType.Accel,
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: holoframe.SensorType.Gyro,
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag,
+    hl2ss.StreamPort.SPATIAL_INPUT: holoframe.SensorType.SpatialInput,
 }
 
 
@@ -248,6 +250,30 @@ class ImuMagUpload(ImuUpload):
     chunk_size = hl2ss.ChunkSize.RM_IMU_MAGNETOMETER
 
 
+# ----------------------------------- SI ------------------------------------- #
+
+class SIUpload(StreamUpload):
+    port = hl2ss.StreamPort.SPATIAL_INPUT
+
+    def create_client(self):
+        self.client = hl2ss.rx_si(
+            self.host, self.port,
+            hl2ss.ChunkSize.SPATIAL_INPUT)
+
+    def adapt_data(self, data) -> bytes:
+        nyu_header = struct.pack(
+            "<BBQIIII",
+            self.header_version,
+            self.sensor_type,
+            data.timestamp,
+            0,
+            0,
+            len(data.payload),
+            0
+        )
+        return nyu_header + data.payload
+
+
 if __name__ == '__main__':
     import fire
     fire.Fire({
@@ -257,4 +283,5 @@ if __name__ == '__main__':
         'accel': ImuAccelUpload,
         'gyro': ImuGyroUpload,
         'mag': ImuMagUpload,
+        'si': SIUpload,
     })
