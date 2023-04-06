@@ -31,7 +31,7 @@ services:
     ports:
       - 6379:6379
     volumes:
-      - ./redis_streamer/redis/redis_6789.conf:/usr/local/etc/redis/redis.conf
+      - ./redis-streamer/redis/redis_6789.conf:/usr/local/etc/redis/redis.conf
     environment:
       ALLOW_EMPTY_PASSWORD: 'yes'
     healthcheck:
@@ -53,6 +53,10 @@ services:
   pvadapter:
     <<: *multicast
     command: ["BBN_redis_adapters.py", "pv"]
+
+  siadapter:
+    <<: *multicast
+    command: ["BBN_redis_adapters.py", "si"]
 
   glladapter:
     <<: *multicast
