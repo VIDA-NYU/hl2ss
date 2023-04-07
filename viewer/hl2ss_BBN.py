@@ -38,16 +38,3 @@ port2SensorType = {
     hl2ss.StreamPort.MICROPHONE: holoframe.SensorType.Microphone,
     hl2ss.StreamPort.SPATIAL_INPUT: holoframe.SensorType.SpatialInput
 }
-
-class rx_encoded_microphone:
-    def __init__(self, host, port, chunk, profile):
-        self._client = hl2ss.rx_microphone(host, port, chunk, profile)
-        
-    def open(self):
-        self._client.open()
-
-    def get_next_packet(self):
-        return self._client.get_next_packet()
-
-    def close(self):
-        self._client.close()

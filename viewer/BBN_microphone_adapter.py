@@ -46,7 +46,7 @@ class exampleApp:
         listener = keyboard.Listener(on_press=on_press)
         listener.start()
         
-        client = hl2ss_BBN.rx_encoded_microphone(host, port, hl2ss.ChunkSize.MICROPHONE, profile)
+        client = hl2ss.rx_microphone(host, port, hl2ss.ChunkSize.MICROPHONE, profile)
         client.open()
         async with self.api.data_push_connect([stream_name], batch=False) as ws_push:
             while self.enable:

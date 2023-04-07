@@ -31,6 +31,7 @@ port2stream_id = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: 'imuaccel',
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: 'imugyro',
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: 'imumag',
+    hl2ss.StreamPort.MICROPHONE: 'mic0',
     hl2ss.StreamPort.SPATIAL_INPUT: 'si',
 }
 
@@ -44,6 +45,7 @@ port2sensor_type = {
     hl2ss.StreamPort.RM_IMU_ACCELEROMETER: holoframe.SensorType.Accel,
     hl2ss.StreamPort.RM_IMU_GYROSCOPE: holoframe.SensorType.Gyro,
     hl2ss.StreamPort.RM_IMU_MAGNETOMETER: holoframe.SensorType.Mag,
+    hl2ss.StreamPort.MICROPHONE: holoframe.SensorType.Microphone,   
     hl2ss.StreamPort.SPATIAL_INPUT: holoframe.SensorType.SpatialInput,
 }
 
@@ -273,6 +275,28 @@ class SIUpload(StreamUpload):
         )
         return nyu_header + data.payload
 
+# ----------------------------------- MIC ------------------------------------- #
+
+class MicUpload(StreamUpload):
+    port = hl2ss.StreamPort.MICROPHONE
+
+    def create_client(self):
+        self.client = hl2ss.rx_microphone(
+            host, port, hl2ss.ChunkSize.MICROPHONE, profile)
+
+    def adapt_data(self, data) -> bytes:
+        nyu_header = struct.pack(
+            "<BBQIIII",
+            self.header_version,
+            self.sensor_type,
+            data.timestamp,
+            hl2ss.Parameters_MICROPHONE.CHANNELS,
+            hl2ss.Parameters_MICROPHONE.SAMPLE_RATE,
+            len(data.payload),
+            0
+        )
+        return nyu_header + data.payload
+
 
 if __name__ == '__main__':
     import fire
@@ -284,4 +308,5 @@ if __name__ == '__main__':
         'gyro': ImuGyroUpload,
         'mag': ImuMagUpload,
         'si': SIUpload,
+        'mic': MicUpload,
     })
