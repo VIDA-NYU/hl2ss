@@ -50,6 +50,13 @@ class exampleApp:
         
         listener = keyboard.Listener(on_press=on_press)
         listener.start()
+
+        async with self.api.data_push_connect([stream_name+'Cal'], batch=False) as ws_push:
+            data = hl2ss.download_calibration_rm_depth_longthrow(host, port)
+            nyu_data = hl2ss_BBN.depthFormat2NYU(data.uv2xy, data.extrinsics)
+            nyu_header = struct.pack("<BBQIIII", hl2ss_BBN.header_version, hl2ss_BBN.port2SensorType['calibration'], 0, data.uv2xy.shape[1], data.uv2xy.shape[0], 12, 64)
+            frame = nyu_header + nyu_data
+            await ws_push.send_data([frame], [stream_name+'Cal'])
         
         client = hl2ss.rx_decoded_rm_depth_longthrow(host, port, hl2ss.ChunkSize.RM_DEPTH_LONGTHROW, mode, png_filter)
         client.open()
