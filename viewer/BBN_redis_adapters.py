@@ -75,6 +75,9 @@ class StreamUpload:
     def adapt_data(self, data) -> bytes:
         return data
 
+    def get_calibration_frame(self):
+        return None
+
     def __call__(self):
         while True:
             print("Starting...")
@@ -82,6 +85,15 @@ class StreamUpload:
             time.sleep(3)
 
     async def forward_async(self):
+        calibration_frame = self.get_calibration_frame()
+        if calibration_frame is not None:
+            url = f'{self.api_url}/data/{self.stream_id}Cal/push?header=0'
+            print("Opening Websocket producer...", url)
+            async with websockets.connect(url, close_timeout=10) as ws:
+                print("Opened!")
+                await ws.send(calibration_frame)
+                print("Calibration frame sent!")
+
         self.enable = True
         print("Trying to connect to TCP client:", self.host, self.port, '...')
         self.create_client()
@@ -218,6 +230,18 @@ class DepthFrameUpload(StreamUpload):
             data.payload.depth.shape[1], data.payload.depth.shape[0], 
             len(depth_img_str), len(pose_info)+len(ab_img_str))
         return nyu_header + depth_img_str + pose_info + ab_img_str
+
+    def depthCalibrationFormat2NYU(self, uv2xy, extrinsics):
+        z = np.ones((uv2xy.shape[0], uv2xy.shape[1], 1), dtype=np.float32)
+        uv2xyz = np.concatenate((uv2xy, z), axis = 2)
+        uv2xyz /= np.linalg.norm(uv2xyz, axis = 2)[:,:,np.newaxis]
+        return uv2xyz.tobytes() + extrinsics.tobytes()
+
+    def get_calibration_frame(self):
+        data = hl2ss.download_calibration_rm_depth_longthrow(self.host, self.port)
+        nyu_data = self.depthCalibrationFormat2NYU(data.uv2xy, data.extrinsics)
+        nyu_header = struct.pack("<BBQIIII", self.header_version, holoframe.SensorType.Calibration, 0, data.uv2xy.shape[1], data.uv2xy.shape[0], 12, 64)
+        return nyu_header + nyu_data
 
 
 # ------------------------------------ IMU ----------------------------------- #
