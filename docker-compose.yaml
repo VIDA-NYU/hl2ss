@@ -89,3 +89,7 @@ services:
   magadapter:
       <<: *multicast
       command: ["BBN_redis_adapters.py", "mag"]
+
+  micadapter:
+      <<: *multicast
+      command: ["BBN_redis_adapters.py", "mic"]
