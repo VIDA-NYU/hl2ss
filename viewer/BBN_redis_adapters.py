@@ -282,7 +282,7 @@ class MicUpload(StreamUpload):
 
     def create_client(self):
         self.client = hl2ss.rx_microphone(
-            host, port, hl2ss.ChunkSize.MICROPHONE, profile)
+            self.host, self.port, hl2ss.ChunkSize.MICROPHONE, hl2ss.AudioProfile.AAC_24000)
 
     def adapt_data(self, data) -> bytes:
         nyu_header = struct.pack(
