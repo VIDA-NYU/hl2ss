@@ -7,6 +7,7 @@ x-multicast-container: &multicast
     environment:
       API_URL: streamer:8000
       HOLOLENS_URL: ${HOLOLENS_URL:-10.18.172.12}
+      PYTHONUNBUFFERED: "1"
     restart: unless-stopped
 
 services:
@@ -58,21 +59,21 @@ services:
     <<: *multicast
     command: ["BBN_redis_adapters.py", "si"]
 
-  glladapter:
-    <<: *multicast
-    command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "0"]
+  # glladapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "0"]
 
-  glfadapter:
-    <<: *multicast
-    command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "1"]
+  # glfadapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "1"]
 
-  grfadapter:
-    <<: *multicast
-    command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "2"]
+  # grfadapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "2"]
 
-  grradapter:
-    <<: *multicast
-    command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "3"]
+  # grradapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "3"]
 
   depthadapter:
     <<: *multicast
@@ -93,3 +94,8 @@ services:
   micadapter:
       <<: *multicast
       command: ["BBN_redis_adapters.py", "mic"]
+
+networks:
+  default:
+    name: hl2ss
+

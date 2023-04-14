@@ -84,6 +84,15 @@ class StreamUpload:
             asyncio.run(self.forward_async())
             time.sleep(3)
 
+    async def start_research_mode(self):
+        while True:
+            try:
+                hl2ss.start_subsystem_pv(self.host, self.port)
+                return
+            except TimeoutError as e:
+                print(e)
+                await asyncio.sleep(1)
+
     async def forward_async(self):
         calibration_frame = self.get_calibration_frame()
         if calibration_frame is not None:
@@ -101,7 +110,7 @@ class StreamUpload:
 
         if self.research_mode:
             print("Trying to start research mode subsystem:", self.host, self.port, '...')
-            hl2ss.start_subsystem_pv(self.host, self.port)
+            await self.start_research_mode()
             print("Started!")
         try:
             print("Opening TCP client...")
@@ -156,7 +165,7 @@ class PVFrameUpload(StreamUpload):
 
     def adapt_data(self, data) -> bytes:
         '''Pack image as JPEG with header.'''
-        img_str = cv2.imencode('.jpg', data.payload.image)[1].tobytes()
+        img_str = cv2.imencode('.jpg', data.payload.image[:, :, ::-1])[1].tobytes()
         pose_info = (
             data.pose.astype('f').tobytes() + 
             data.payload.focal_length.astype('f').tobytes() + 
