@@ -1,7 +1,8 @@
 
 import numpy as np
-import cv2
 import os
+import cv2
+import open3d as o3d
 import hl2ss
 
 
@@ -9,21 +10,29 @@ import hl2ss
 # Transforms
 #------------------------------------------------------------------------------
 
+def get_homogeneous_component(array):
+    return array[..., -1, np.newaxis]
+
+
+def get_inhomogeneous_component(array):
+    return array[..., 0:-1]
+
+
 def to_homogeneous(array):
     return np.concatenate((array, np.ones(array.shape[0:-1] + (1,), dtype=array.dtype)), axis=-1)
 
 
 def to_inhomogeneous(array):
-    w = array[..., -1, np.newaxis]
-    return (array[..., 0:-1] / w, w)
+    return get_inhomogeneous_component(array) / get_homogeneous_component(array)
 
 
-def project_to_image(hwpoints, projection):
-    return to_inhomogeneous(hwpoints @ projection[:, 0:3])
+def compute_uv2xy(intrinsics, width, height):
+    uv2x, uv2y = np.meshgrid((np.arange(width, dtype=intrinsics.dtype)  - intrinsics[2, 0]) / intrinsics[0, 0], (np.arange(height, dtype=intrinsics.dtype) - intrinsics[2, 1]) / intrinsics[1, 1])
+    return np.dstack((uv2x, uv2y))
 
 
-def projection(intrinsics, world_to_camera):
-    return world_to_camera @ intrinsics
+def compute_norm(array):
+    return np.linalg.norm(array, axis=-1)
 
 
 def image_to_camera(intrinsics):
@@ -38,10 +47,6 @@ def reference_to_world(pose):
     return pose
 
 
-def camera_to_camera(extrinsics_source, extrinsics_destination):
-    return camera_to_rignode(extrinsics_source) @ rignode_to_camera(extrinsics_destination)
-
-
 def world_to_reference(pose):
     return np.linalg.inv(pose)
 
@@ -52,6 +57,30 @@ def rignode_to_camera(extrinsics):
 
 def camera_to_image(intrinsics):
     return intrinsics
+
+
+def block_to_list(points):
+    return points.reshape((-1, points.shape[-1]))
+
+
+def list_to_block(height, width, points):
+    return points.reshape((height, width, -1))
+
+
+def slice_to_block(slice):
+    return slice[:, :, np.newaxis]
+
+
+def transform(points, transform4x4):
+    return points @ transform4x4[:3, :3] + transform4x4[3, :3].reshape(([1] * (len(points.shape) - 1)).append(3))
+
+
+def orient(directions, transform4x4):
+    return directions @ transform4x4[:3, :3]
+
+
+def project(points, projection4x4):
+    return to_inhomogeneous(transform(points, projection4x4))
 
 
 def extrinsics_to_Rt(extrinsics):
@@ -68,16 +97,6 @@ def Rt_to_essential(R, t_skew):
 
 def essential_to_fundamental(image_to_camera_1, image_to_camera_2, essential):
     return image_to_camera_1 @ essential @ image_to_camera_2.transpose()
-
-
-def compute_uv2xy(intrinsics, width, height):
-    uv2x, uv2y = np.meshgrid((np.arange(width, dtype=intrinsics.dtype)  - intrinsics[2, 0]) / intrinsics[0, 0], (np.arange(height, dtype=intrinsics.dtype) - intrinsics[2, 1]) / intrinsics[1, 1])
-    return np.dstack((uv2x, uv2y))
-
-
-def xy1_to_rays(xy1):
-    n = np.linalg.norm(xy1, axis=2)
-    return (xy1 / n[:, :, np.newaxis], n)
 
 
 #------------------------------------------------------------------------------
@@ -139,74 +158,98 @@ def rm_vlc_to_rgb(image):
 # RM Depth
 #------------------------------------------------------------------------------
 
+def rm_depth_normalize(depth, scale):
+    return slice_to_block(depth / scale)
+
+
 def rm_depth_undistort(depth, undistort_map):
     return cv2.remap(depth, undistort_map[:, :, 0], undistort_map[:, :, 1], cv2.INTER_NEAREST)
 
 
-def rm_depth_ab_to_float(ab):
-    return ab.astype(np.float32) / hl2ss._RANGEOF.U16_MAX
+def rm_depth_to_float(image):
+    return image.astype(np.float32) / hl2ss._RANGEOF.U16_MAX
 
 
-def rm_depth_ab_to_uint8(ab):
-    return (ab / (hl2ss._RANGEOF.U8_MAX + 1)).astype(np.uint8)
+def rm_depth_to_uint8(image):
+    return (image / (hl2ss._RANGEOF.U8_MAX + 1)).astype(np.uint8)
 
 
-def rm_depth_scale(depth, scale):
-    return depth / scale
+def rm_depth_compute_rays(uv2xy, depth_scale):
+    xy1 = to_homogeneous(uv2xy)
+    scale = compute_norm(xy1) * depth_scale
+    return (xy1, scale)
 
 
-def rm_depth_normalize(depth, undistort_map, scale):
-    return rm_depth_scale(rm_depth_undistort(depth, undistort_map), scale)
+def rm_depth_to_points(rays, depth):
+    return rays * depth
 
 
-def rm_depth_to_points(depth, rays):
-    xyz = rays * depth[:, :, np.newaxis]
-    return np.hstack((xyz[:, :, 0].reshape((-1, 1)), xyz[:, :, 1].reshape((-1, 1)), xyz[:, :, 2].reshape((-1, 1))))
-
-
-def rm_depth_rgbd(depth, ab):
-    return (ab, depth)
-
-
-def rm_depth_registration(depth_uv2xy, depth_scale, depth_extrinsics, camera_intrinsics, camera_extrinsics):
-    xy1 = to_homogeneous(depth_uv2xy)
-    n = np.linalg.norm(xy1, axis=2)
-    depth_to_camera = camera_to_camera(depth_extrinsics, camera_extrinsics)
-    depth_to_image = projection(camera_intrinsics, depth_to_camera)
-    return (xy1, n * depth_scale, depth_to_image)
-
-
-def rm_depth_rgbd_registered(depth, rgb, depth_xy1, depth_to_image, rgb_interpolation):
-    xyz = rm_depth_to_points(depth, depth_xy1)
-    xyz1 = to_homogeneous(xyz)
-    uv, _ = project_to_image(xyz1, depth_to_image)
-    u = uv[:, 0].reshape(depth.shape)
-    v = uv[:, 1].reshape(depth.shape)
-    depth[(u < 0) | (u > (rgb.shape[1] - 1)) | (v < 0) | (v > (rgb.shape[0] - 1))] = 0
-    rgb = cv2.remap(rgb, u, v, rgb_interpolation)
-    return (rgb, depth)
+def rm_depth_to_rgb(image):
+    return np.dstack((image, image, image))
 
 
 #------------------------------------------------------------------------------
 # PV
 #------------------------------------------------------------------------------
 
-def pv_optimize_for_cv(host, focus, exposure_mode, exposure_value, iso_speed_mode, iso_speed_value, color_preset):
-    settings = hl2ss.ipc_rc(host, hl2ss.IPCPort.REMOTE_CONFIGURATION)
-
-    settings.set_pv_video_temporal_denoising(hl2ss.PV_VideoTemporalDenoisingMode.Off)
-    settings.set_pv_focus(hl2ss.PV_FocusMode.Manual, hl2ss.PV_AutoFocusRange.Normal, hl2ss.PV_ManualFocusDistance.Infinity, focus, hl2ss.PV_DriverFallback.Disable)
-    settings.set_pv_exposure(exposure_mode, exposure_value)
-    settings.set_pv_white_balance_preset(color_preset)
-    settings.set_pv_exposure_priority_video(hl2ss.PV_ExposurePriorityVideo.Disabled)
-    settings.set_pv_iso_speed(iso_speed_mode, iso_speed_value)
-
-
 def pv_fix_calibration(intrinsics, extrinsics):
     R = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]], dtype=extrinsics.dtype)
     intrinsics[0, 0] = -intrinsics[0, 0]
     extrinsics = extrinsics @ R
-    return (intrinsics, extrinsics, R)
+    return (intrinsics, extrinsics)
+
+
+#------------------------------------------------------------------------------
+# SM
+#------------------------------------------------------------------------------
+
+def sm_mesh_cast(mesh, vertex_positions_type, triangle_indices_type, vertex_normals_type):
+    mesh.vertex_positions = mesh.vertex_positions.astype(vertex_positions_type)
+    mesh.triangle_indices = mesh.triangle_indices.astype(triangle_indices_type)
+    mesh.vertex_normals   = mesh.vertex_normals.astype(vertex_normals_type)
+
+
+def sm_mesh_normalize_positions(mesh):
+    mesh.vertex_positions[:, 0:3] = mesh.vertex_positions[:, 0:3] * mesh.vertex_position_scale
+    mesh.vertex_positions = (mesh.vertex_positions / mesh.vertex_positions[:, 3:]) @ mesh.pose
+
+
+def sm_mesh_normalize_normals(mesh):
+    d = np.linalg.norm(mesh.vertex_normals, axis=1)
+    mesh.vertex_normals[d > 0, :] = mesh.vertex_normals[d > 0, :] / d[d > 0, np.newaxis]
+    mesh.vertex_normals = mesh.vertex_normals @ mesh.pose
+
+
+def sm_mesh_normalize(mesh):
+    sm_mesh_normalize_positions(mesh)
+    sm_mesh_normalize_normals(mesh)
+
+
+def sm_mesh_to_open3d_triangle_mesh(mesh):
+    open3d_mesh = o3d.geometry.TriangleMesh()
+
+    open3d_mesh.vertices       = o3d.utility.Vector3dVector(mesh.vertex_positions[:, 0:3])
+    open3d_mesh.vertex_normals = o3d.utility.Vector3dVector(mesh.vertex_normals[:, 0:3])
+    open3d_mesh.triangles      = o3d.utility.Vector3iVector(mesh.triangle_indices)
+
+    return open3d_mesh
+
+
+#------------------------------------------------------------------------------
+# SU
+#------------------------------------------------------------------------------
+
+def su_normalize(mesh, location):
+    mesh.vertex_positions = transform(mesh.vertex_positions, location)
+
+
+def su_mesh_to_open3d_triangle_mesh(mesh):
+    open3d_mesh = o3d.geometry.TriangleMesh()
+
+    open3d_mesh.vertices  = o3d.utility.Vector3dVector(mesh.vertex_positions)
+    open3d_mesh.triangles = o3d.utility.Vector3iVector(mesh.triangle_indices)
+
+    return open3d_mesh
 
 
 #------------------------------------------------------------------------------
@@ -382,15 +425,10 @@ def _load_calibration_rm(port, path):
 # Calibration Manager
 #------------------------------------------------------------------------------
 
-class _Mode2_PV_E:
+class _Mode2_PV(hl2ss._Mode2_PV):
     def __init__(self, mode2, extrinsics):
-        self.focal_length          = mode2.focal_length
-        self.principal_point       = mode2.principal_point
-        self.radial_distortion     = mode2.radial_distortion
-        self.tangential_distortion = mode2.tangential_distortion
-        self.projection            = mode2.projection
-        self.intrinsics            = mode2.intrinsics
-        self.extrinsics            = extrinsics
+        super().__init__(mode2.focal_length, mode2.principal_point, mode2.radial_distortion, mode2.tangential_distortion, mode2.projection, mode2.intrinsics)
+        self.extrinsics = extrinsics
 
 
 def _check_calibration_directory(path):
@@ -403,7 +441,7 @@ def _calibration_subdirectory(port, path):
 
 
 def _calibration_subdirectory_pv(focus, width, height, path):
-    return os.path.join(path, '{focus}_{width}_{height}'.format(focus=int(focus), width=int(width), height=int(height)))
+    return os.path.join(path, f'{int(focus)}_{int(width)}_{int(height)}')
 
 
 def get_calibration_rm(host, port, path):
@@ -435,7 +473,7 @@ def get_calibration_pv(host, port, path, focus, width, height, framerate, load_e
         os.makedirs(base, exist_ok=True)
         _save_calibration_pv(calibration, base)
         
-    return _Mode2_PV_E(calibration, extrinsics)
+    return _Mode2_PV(calibration, extrinsics)
 
 
 def save_extrinsics_pv(port, extrinsics, path):
@@ -451,7 +489,7 @@ def save_extrinsics_pv(port, extrinsics, path):
 # Stereo Calibration / Rectification
 #------------------------------------------------------------------------------
 
-class StereoCalibration:
+class _StereoCalibration:
     def __init__(self, R, t, E, F):
         self.R = R
         self.t = t
@@ -459,7 +497,7 @@ class StereoCalibration:
         self.F = F
 
 
-class StereoRectification:
+class _StereoRectification:
     def __init__(self, R1, R2, P1, P2, Q, roi1, roi2, map1, map2):
         self.R1   = R1
         self.R2   = R2
@@ -473,13 +511,13 @@ class StereoRectification:
 
 
 def rm_vlc_stereo_calibrate(intrinsics_1, intrinsics_2, extrinsics_1, extrinsics_2):
-    extrinsics = camera_to_camera(extrinsics_1, extrinsics_2)
+    extrinsics = camera_to_rignode(extrinsics_1) @ rignode_to_camera(extrinsics_2)
     R, t = extrinsics_to_Rt(extrinsics)
     t_skew = vector_to_skew_symmetric(t)
     E = Rt_to_essential(R, t_skew)
     F = essential_to_fundamental(image_to_camera(intrinsics_1)[:3, :3], image_to_camera(intrinsics_2)[:3, :3], E)
 
-    return StereoCalibration(R, t, E, F)
+    return _StereoCalibration(R, t, E, F)
 
 
 def rm_vlc_stereo_rectify(intrinsics_1, intrinsics_2, R_1_to_2, t_1_to_2, image_shape):
@@ -496,7 +534,7 @@ def rm_vlc_stereo_rectify(intrinsics_1, intrinsics_2, R_1_to_2, t_1_to_2, image_
     roi1 = np.array(roi1, dtype=np.int32)
     roi2 = np.array(roi2, dtype=np.int32)
 
-    return StereoRectification(R1, R2, P1, P2, Q, roi1, roi2, np.dstack((map1x, map1y)), np.dstack((map2x, map2y))) # float64, opencv shape
+    return _StereoRectification(R1, R2, P1, P2, Q, roi1, roi2, np.dstack((map1x, map1y)), np.dstack((map2x, map2y))) # float64, opencv shape
 
 
 def _stereo_subdirectory(port_1, port_2, path):
@@ -523,6 +561,8 @@ def _save_stereo_rectification(rectification, path):
     rectification.map1.tofile(os.path.join(path, 'map1.bin'))
     rectification.map2.tofile(os.path.join(path, 'map2.bin'))
 
+    np.array(rectification.map1.shape, dtype=np.int32).tofile(os.path.join(path, 'map_shape.bin'))
+
 
 def _load_stereo_calibration(path):
     R    = np.fromfile(os.path.join(path, 'R.bin'),    dtype=np.float32).reshape((3, 3))
@@ -530,11 +570,11 @@ def _load_stereo_calibration(path):
     E    = np.fromfile(os.path.join(path, 'E.bin'),    dtype=np.float32).reshape((3, 3))
     F    = np.fromfile(os.path.join(path, 'F.bin'),    dtype=np.float32).reshape((3, 3))
 
-    return StereoCalibration(R, t, E, F)
+    return _StereoCalibration(R, t, E, F)
 
 
-def _load_stereo_rectification(map_shape, path):
-    lut_shape = map_shape + (2,)
+def _load_stereo_rectification(path):
+    lut_shape = tuple(np.fromfile(os.path.join(path, 'map_shape.bin'), dtype=np.int32).tolist())
 
     R1   = np.fromfile(os.path.join(path, 'R1.bin'),   dtype=np.float64).reshape((3, 3))
     R2   = np.fromfile(os.path.join(path, 'R2.bin'),   dtype=np.float64).reshape((3, 3))
@@ -546,7 +586,7 @@ def _load_stereo_rectification(map_shape, path):
     map1 = np.fromfile(os.path.join(path, 'map1.bin'), dtype=np.float32).reshape(lut_shape)
     map2 = np.fromfile(os.path.join(path, 'map2.bin'), dtype=np.float32).reshape(lut_shape)
 
-    return StereoRectification(R1, R2, P1, P2, Q, roi1, roi2, map1, map2)
+    return _StereoRectification(R1, R2, P1, P2, Q, roi1, roi2, map1, map2)
 
 
 def save_stereo_calibration(port_1, port_2, calibration, path):
@@ -569,8 +609,8 @@ def load_stereo_calibration(port_1, port_2, path):
     return _load_stereo_calibration(base)
 
 
-def load_stereo_rectification(port_1, port_2, path, map_shape):
+def load_stereo_rectification(port_1, port_2, path):
     _check_calibration_directory(path)
     base = _stereo_subdirectory(port_1, port_2, path)
-    return _load_stereo_rectification(map_shape, base)
+    return _load_stereo_rectification(base)
 

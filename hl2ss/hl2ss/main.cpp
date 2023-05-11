@@ -16,6 +16,9 @@
 #include "ipc_sm.h"
 #include "scene_understanding.h"
 #include "ipc_su.h"
+#include "voice_input.h"
+#include "ipc_vi.h"
+#include "stream_eet.h"
 
 #include <winrt/Windows.ApplicationModel.h>
 #include <winrt/Windows.ApplicationModel.Core.h>
@@ -73,7 +76,8 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView>
 		SpatialInput_Initialize();
 		PersonalVideo_Initialize();
 		SpatialMapping_Initialize();
-		SceneUnderstanding_Initialize(); // thread?
+		SceneUnderstanding_Initialize();
+		VoiceInput_Initialize();
 
 		RM_Initialize();
 		MC_Initialize();
@@ -82,6 +86,9 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView>
 		RC_Initialize();
 		SM_Initialize();
 		SU_Initialize();
+		VI_Initialize();
+
+		EET_Initialize();
 
 		m_init = true;
 	}
@@ -96,7 +103,6 @@ struct App : winrt::implements<App, IFrameworkViewSource, IFrameworkView>
 		window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
 
 		HolographicSpace_Update();
-		SI_NotifyNextFrame(HolographicSpace_GetTimestamp());
 		HolographicSpace_Clear();
 		// Draw
 		HolographicSpace_Present();

@@ -172,6 +172,7 @@ class _interconnect(mp.Process):
         sink_din.put(self._frame_stamp)
 
     def _get_most_recent_frame(self, sink_din, sink_dout):
+        sink_din.put(self._frame_stamp)
         sink_din.put(self._buffer.last())
 
     def _get_buffered_frame(self, sink_din, sink_dout, frame_stamp):
@@ -299,8 +300,9 @@ class _sink:
     def get_most_recent_frame(self):
         self._sink_dout.put(_interconnect.IPC_SINK_GET_MOST_RECENT_FRAME)
         self._interconnect_semaphore.release()
+        frame_stamp = self._sink_din.get()
         data = self._sink_din.get()
-        return data
+        return (frame_stamp, data)
 
     def get_buffered_frame(self, frame_stamp):
         self._sink_dout.put(frame_stamp)
@@ -379,6 +381,9 @@ class producer:
     def configure_si(self, host, port, chunk):
         self.configure(port, hl2ss.rx_si(host, port, chunk))
 
+    def configure_eet(self, host, port, chunk, fps):
+        self.configure(port, hl2ss.rx_eet(host, port, chunk, fps))
+
     def initialize(self, port, buffer_size):
         self._producer[port] = _module(self._rx[port], buffer_size)
 
@@ -423,12 +428,12 @@ class consumer:
 # Stream Sync Period
 #------------------------------------------------------------------------------
 
-def get_sync_period_rm_vlc():
-    return hl2ss.Parameters_RM_VLC.FPS
+def get_sync_period_rm_vlc(profile):
+    return hl2ss.get_gop_size(profile, hl2ss.Parameters_RM_VLC.FPS)
 
 
-def get_sync_period_rm_depth_ahat():
-    return hl2ss.Parameters_RM_DEPTH_AHAT.FPS
+def get_sync_period_rm_depth_ahat(profile):
+    return hl2ss.get_gop_size(profile, hl2ss.Parameters_RM_DEPTH_AHAT.FPS)
 
 
 def get_sync_period_rm_depth_longthrow():
@@ -439,8 +444,8 @@ def get_sync_period_rm_imu():
     return 1
 
 
-def get_sync_period_pv(framerate):
-    return framerate
+def get_sync_period_pv(profile, framerate):
+    return hl2ss.get_gop_size(profile, framerate)
 
 
 def get_sync_period_microphone():
@@ -448,6 +453,10 @@ def get_sync_period_microphone():
 
 
 def get_sync_period_si():
+    return 1
+
+
+def get_sync_period_eet():
     return 1
 
 

@@ -123,6 +123,18 @@
     <ClCompile Include="..\packages\Microsoft.MixedReality.SceneUnderstanding.1.0.14\include\native\Microsoft.MixedReality.SceneUnderstanding.cpp">
       <Filter>Libraries\SceneUnderstanding</Filter>
     </ClCompile>
+    <ClCompile Include="..\hl2ss\ipc_vi.cpp">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClCompile>
+    <ClCompile Include="..\hl2ss\voice_input.cpp">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClCompile>
+    <ClCompile Include="..\hl2ss\extended_eye_tracking.cpp">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClCompile>
+    <ClCompile Include="..\hl2ss\stream_eet.cpp">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\hl2ss\custom_hook_callback.h">
@@ -200,9 +212,6 @@
     <ClInclude Include="..\hl2ss\stream_si.h">
       <Filter>Libraries\hl2ss</Filter>
     </ClInclude>
-    <ClInclude Include="ports.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="hl2ss.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -240,6 +249,18 @@
       <Filter>Libraries\hl2ss</Filter>
     </ClInclude>
     <ClInclude Include="..\hl2ss\scene_understanding.h">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClInclude>
+    <ClInclude Include="..\hl2ss\ipc_vi.h">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClInclude>
+    <ClInclude Include="..\hl2ss\voice_input.h">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClInclude>
+    <ClInclude Include="..\hl2ss\extended_eye_tracking.h">
+      <Filter>Libraries\hl2ss</Filter>
+    </ClInclude>
+    <ClInclude Include="..\hl2ss\stream_eet.h">
       <Filter>Libraries\hl2ss</Filter>
     </ClInclude>
   </ItemGroup>
