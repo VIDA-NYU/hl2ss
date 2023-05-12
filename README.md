@@ -84,7 +84,16 @@ Before running - make sure you:
 
 Then all you need to do is (at the root of the repository):
 ```bash
+# bring up the hl2ss adapters
 HOLOLENS_URL=<Hololens-IP> docker-compose up -d --build
+```
+
+If you want to manage the redis containers and the hl2ss adapters separately, you can instead do:
+```bash
+# bring up the redis containers
+docker-compose -f docker-compose.redis.yaml up -d --build
+# bring up the hl2ss adapters
+HOLOLENS_URL=<Hololens-IP> docker-compose -f docker-compose.adapters.yaml up -d --build
 ```
 
 Then to view the streams, you can run any of these:

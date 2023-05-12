@@ -1,0 +1,62 @@
+version: '3.7'
+
+x-multicast-container: &multicast
+    image: hl2ss_multicast
+    build:
+      context: .
+    environment:
+      API_URL: streamer:8000
+      HOLOLENS_URL: ${HOLOLENS_URL:-10.18.172.12}
+      PYTHONUNBUFFERED: "1"
+    restart: unless-stopped
+
+services:
+  pvadapter:
+    <<: *multicast
+    command: ["BBN_redis_adapters.py", "pv"]
+
+  siadapter:
+    <<: *multicast
+    command: ["BBN_redis_adapters.py", "si"]
+
+  # glladapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "0"]
+
+  glfadapter:
+    <<: *multicast
+    command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "1"]
+
+  # grfadapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "2"]
+
+  # grradapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "vlc", "--cam-idx", "3"]
+
+  depthadapter:
+    <<: *multicast
+    command: ["BBN_redis_adapters.py", "depth"]
+
+  # imuacceladapter:
+  #   <<: *multicast
+  #   command: ["BBN_redis_adapters.py", "accel"]
+
+  # gyroadapter:
+  #     <<: *multicast
+  #     command: ["BBN_redis_adapters.py", "gyro"]
+
+  # magadapter:
+  #     <<: *multicast
+  #     command: ["BBN_redis_adapters.py", "mag"]
+
+  # micadapter:
+  #     <<: *multicast
+  #     command: ["BBN_redis_adapters.py", "mic"]
+
+networks:
+  default:
+    name: hl2ss
+    external: true
+
